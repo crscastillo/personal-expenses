@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 import { getMonthName, getCurrentMonth, getCurrentYear, formatCurrency } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Calculator } from '@/components/calculator'
 
-// Type definitions for sample data
+// Type definitions
 type Subcategory = {
   id: string
   name: string
@@ -37,82 +38,22 @@ type Category = {
   subcategories: Subcategory[]
 }
 
-// Sample data - will be replaced with real data from Supabase
-const initialCategories: Category[] = [
-  {
-    id: '1',
-    name: 'Income',
-    type: 'income' as const,
-    color: '#22c55e',
-    subcategories: [
-      { id: '1', name: 'Salary', plannedAmount: 5000, actualAmount: 5000 },
-      { id: '2', name: 'Freelance', plannedAmount: 500, actualAmount: 300 },
-    ],
-  },
-  {
-    id: '2',
-    name: 'Investments',
-    type: 'expense' as const,
-    color: '#8b5cf6',
-    subcategories: [
-      { id: '3', name: '401(k)', plannedAmount: 300, actualAmount: 300 },
-      { id: '4', name: 'Roth IRA', plannedAmount: 200, actualAmount: 200 },
-    ],
-  },
-  {
-    id: '3',
-    name: 'Savings',
-    type: 'expense' as const,
-    color: '#3b82f6',
-    subcategories: [
-      { id: '5', name: 'Emergency Fund', plannedAmount: 300, actualAmount: 300 },
-      { id: '6', name: 'Vacation', plannedAmount: 100, actualAmount: 50 },
-    ],
-  },
-  {
-    id: '4',
-    name: 'Fixed Costs',
-    type: 'expense' as const,
-    color: '#ef4444',
-    subcategories: [
-      { id: '7', name: 'Rent/Mortgage', plannedAmount: 1500, actualAmount: 1500, dueDate: '2026-02-01' },
-      { id: '8', name: 'Utilities', plannedAmount: 150, actualAmount: 140 },
-      { id: '9', name: 'Internet/Phone', plannedAmount: 100, actualAmount: 100 },
-      { id: '10', name: 'Insurance', plannedAmount: 300, actualAmount: 300, dueDate: '2026-02-15' },
-      { id: '11', name: 'Groceries', plannedAmount: 600, actualAmount: 450 },
-    ],
-  },
-  {
-    id: '5',
-    name: 'Guilt-Free Spending',
-    type: 'expense' as const,
-    color: '#f59e0b',
-    subcategories: [
-      { id: '12', name: 'Dining Out', plannedAmount: 400, actualAmount: 350 },
-      { id: '13', name: 'Entertainment', plannedAmount: 200, actualAmount: 150 },
-      { id: '14', name: 'Shopping', plannedAmount: 300, actualAmount: 200 },
-      { id: '15', name: 'Hobbies', plannedAmount: 200, actualAmount: 100 },
-    ],
-  },
-  {
-    id: '6',
-    name: 'Misc',
-    type: 'expense' as const,
-    color: '#6b7280',
-    subcategories: [
-      { id: '16', name: 'Untracked', plannedAmount: 0, actualAmount: 0 },
-    ],
-  },
-]
+// Category colors
+const categoryColors: Record<string, string> = {
+  'Income': '#22c55e',
+  'Investments': '#8b5cf6',
+  'Savings': '#3b82f6',
+  'Fixed Costs': '#ef4444',
+  'Guilt-Free Spending': '#f59e0b',
+  'Misc': '#6b7280',
+}
 
 export default function BudgetsPage() {
+  const supabase = createClient()
   const [currentMonth, setCurrentMonth] = useState(getCurrentMonth())
   const [currentYear, setCurrentYear] = useState(getCurrentYear())
-  
-  // Store budget data per month/year
-  const [budgetsByMonth, setBudgetsByMonth] = useState<Record<string, Category[]>>({
-    [`${getCurrentYear()}-${getCurrentMonth()}`]: initialCategories,
-  })
+  const [categories, setCategories] = useState<Category[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   
   const [editingItem, setEditingItem] = useState<any>(null)
   const [editedAmount, setEditedAmount] = useState('')
@@ -120,20 +61,79 @@ export default function BudgetsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [newCategoryAmount, setNewCategoryAmount] = useState('')
 
-  // Get current month key and categories
-  const monthKey = `${currentYear}-${currentMonth}`
-  const categories = budgetsByMonth[monthKey] || initialCategories
-
-  // Function to update categories for current month
-  const setCategories = (updater: Category[] | ((prev: Category[]) => Category[])) => {
-    setBudgetsByMonth(prev => {
-      const currentCategories = prev[monthKey] || initialCategories
-      const newCategories = typeof updater === 'function' ? updater(currentCategories) : updater
-      return {
-        ...prev,
-        [monthKey]: newCategories,
-      }
-    })
+  useEffect(() => {
+    loadBudgetData()
+  }, [currentMonth, currentYear])
+  
+  const loadBudgetData = async () => {
+    try {
+      setIsLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      
+      // Calculate start and end dates for the selected month
+      const startDate = new Date(currentYear, currentMonth - 1, 1)
+      const endDate = new Date(currentYear, currentMonth, 0)
+      
+      // Load all categories with subcategories
+      const { data: categoriesData, error: catError } = await supabase
+        .from('categories')
+        .select('*')
+        .order('display_order')
+      
+      if (catError) throw catError
+      
+      // Load user's subcategories
+      const { data: subcategoriesData, error: subError } = await supabase
+        .from('subcategories')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('name')
+      
+      if (subError) throw subError
+      
+      // Load transactions for the selected month
+      const { data: transactionsData, error: transError } = await supabase
+        .from('transactions')
+        .select('amount, subcategory_id, transfer_to_account_id')
+        .eq('user_id', user.id)
+        .gte('transaction_date', startDate.toISOString().split('T')[0])
+        .lte('transaction_date', endDate.toISOString().split('T')[0])
+      
+      if (transError) throw transError
+      
+      // Calculate actual amounts per subcategory
+      const actualAmounts: Record<string, number> = {}
+      transactionsData?.forEach(t => {
+        if (t.transfer_to_account_id) return // Skip transfers
+        if (t.subcategory_id) {
+          actualAmounts[t.subcategory_id] = (actualAmounts[t.subcategory_id] || 0) + Math.abs(parseFloat(t.amount.toString()))
+        }
+      })
+      
+      // Build categories with subcategories
+      const builtCategories: Category[] = (categoriesData || []).map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        type: cat.type as 'income' | 'expense',
+        color: categoryColors[cat.name] || '#6b7280',
+        subcategories: (subcategoriesData || [])
+          .filter(sub => sub.category_id === cat.id)
+          .map(sub => ({
+            id: sub.id,
+            name: sub.name,
+            plannedAmount: 0, // TODO: Load from budgets table when implemented
+            actualAmount: actualAmounts[sub.id] || 0,
+            dueDate: undefined, // TODO: Load from budgets table when implemented
+          }))
+      }))
+      
+      setCategories(builtCategories)
+    } catch (error) {
+      console.error('Error loading budget data:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const nextMonth = () => {
@@ -207,24 +207,27 @@ export default function BudgetsPage() {
     setEditedDueDate('')
   }
 
-  // Calculate chart data
+  // Calculate chart data - use actual amounts since we don't have planned budgets yet
   const incomeChartData = categories
     .filter(cat => cat.type === 'income')
     .flatMap(cat => 
-      cat.subcategories.map(sub => ({
-        name: sub.name,
-        value: sub.plannedAmount,
-        color: cat.color,
-      }))
+      cat.subcategories
+        .filter(sub => sub.actualAmount > 0) // Only show subcategories with actual income
+        .map(sub => ({
+          name: sub.name,
+          value: sub.actualAmount,
+          color: cat.color,
+        }))
     )
 
   const expenseChartData = categories
     .filter(cat => cat.type === 'expense' && cat.name !== 'Misc')
     .map(cat => ({
       name: cat.name,
-      value: cat.subcategories.reduce((sum, sub) => sum + sub.plannedAmount, 0),
+      value: cat.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0),
       color: cat.color,
     }))
+    .filter(cat => cat.value > 0) // Only show categories with actual spending
 
   const handleDeleteItem = () => {
     if (!editingItem) return
@@ -259,13 +262,39 @@ export default function BudgetsPage() {
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Monthly Budget</h1>
+            <p className="text-muted-foreground">Loading budget data...</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {[1, 2].map((i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader className="space-y-2">
+                <div className="h-4 bg-muted rounded w-32"></div>
+                <div className="h-4 bg-muted rounded w-48"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px] bg-muted rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Monthly Budget</h1>
           <p className="text-muted-foreground">
-            Plan your conscious spending for {getMonthName(currentMonth)} {currentYear}
+            Review your spending for {getMonthName(currentMonth)} {currentYear}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -362,64 +391,78 @@ export default function BudgetsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Income Allocation</CardTitle>
-            <CardDescription>Planned income sources for this month</CardDescription>
+            <CardTitle>Income by Source</CardTitle>
+            <CardDescription>Actual income received this month</CardDescription>
           </CardHeader>
           <CardContent className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={incomeChartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {incomeChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatCurrency(Number(value) || 0)} />
-              </PieChart>
-            </ResponsiveContainer>
+            {incomeChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={incomeChartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {incomeChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatCurrency(Number(value) || 0)} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                No income received this month
+              </div>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Expense Allocation</CardTitle>
-            <CardDescription>Planned expenses by category for this month</CardDescription>
+            <CardTitle>Expenses by Category</CardTitle>
+            <CardDescription>Actual spending by category this month</CardDescription>
           </CardHeader>
           <CardContent className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={expenseChartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {expenseChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatCurrency(Number(value) || 0)} />
-              </PieChart>
-            </ResponsiveContainer>
+            {expenseChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={expenseChartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {expenseChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatCurrency(Number(value) || 0)} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                No expenses recorded this month
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
       {/* Budget Categories */}
       <div className="space-y-4">
-        {categories.map((category) => {
+        {categories
+          .filter(cat => cat.subcategories.some(sub => sub.actualAmount > 0 || sub.plannedAmount > 0))
+          .map((category) => {
           const totalPlanned = category.subcategories.reduce(
             (sum, sub) => sum + sub.plannedAmount,
             0
@@ -428,7 +471,7 @@ export default function BudgetsPage() {
             (sum, sub) => sum + sub.actualAmount,
             0
           )
-          const percentage = totalPlanned > 0 ? (totalActual / totalPlanned) * 100 : 0
+          const percentage = totalPlanned > 0 ? (totalActual / totalPlanned) * 100 : 100
 
           return (
             <Card key={category.id}>
@@ -442,42 +485,52 @@ export default function BudgetsPage() {
                     <CardTitle>{category.name}</CardTitle>
                   </div>
                   <div className="flex items-center gap-4">
+                    {totalPlanned > 0 && (
+                      <div className="text-right">
+                        <div className="text-sm text-muted-foreground">Planned</div>
+                        <div className="font-semibold">{formatCurrency(totalPlanned)}</div>
+                      </div>
+                    )}
                     <div className="text-right">
-                      <div className="text-sm text-muted-foreground">Planned</div>
-                      <div className="font-semibold">{formatCurrency(totalPlanned)}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-muted-foreground">Actual</div>
+                      <div className="text-sm text-muted-foreground">
+                        {totalPlanned > 0 ? 'Actual' : 'Total'}
+                      </div>
                       <div className="font-semibold" style={{ color: category.color }}>
                         {formatCurrency(totalActual)}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm text-muted-foreground">Remaining</div>
-                      <div
-                        className="font-semibold"
-                        style={{
-                          color: totalPlanned - totalActual >= 0 ? '#22c55e' : '#ef4444',
-                        }}
-                      >
-                        {formatCurrency(totalPlanned - totalActual)}
+                    {totalPlanned > 0 && (
+                      <div className="text-right">
+                        <div className="text-sm text-muted-foreground">Remaining</div>
+                        <div
+                          className="font-semibold"
+                          style={{
+                            color: totalPlanned - totalActual >= 0 ? '#22c55e' : '#ef4444',
+                          }}
+                        >
+                          {formatCurrency(totalPlanned - totalActual)}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full transition-all"
-                    style={{
-                      width: `${Math.min(percentage, 100)}%`,
-                      backgroundColor: category.color,
-                    }}
-                  />
-                </div>
+                {totalPlanned > 0 && (
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full transition-all"
+                      style={{
+                        width: `${Math.min(percentage, 100)}%`,
+                        backgroundColor: category.color,
+                      }}
+                    />
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {category.subcategories.map((sub) => (
+                  {category.subcategories
+                    .filter(sub => sub.actualAmount > 0 || sub.plannedAmount > 0)
+                    .map((sub) => (
                     <div
                       key={sub.id}
                       className="flex items-center justify-between rounded-lg border p-3"
@@ -491,11 +544,13 @@ export default function BudgetsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-4 text-sm">
-                        <span className="text-muted-foreground">
-                          {formatCurrency(sub.actualAmount)}
-                        </span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="font-medium">{formatCurrency(sub.plannedAmount)}</span>
+                        <span className="font-medium">{formatCurrency(sub.actualAmount)}</span>
+                        {sub.plannedAmount > 0 && (
+                          <>
+                            <span className="text-muted-foreground">/</span>
+                            <span className="text-muted-foreground">{formatCurrency(sub.plannedAmount)}</span>
+                          </>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -512,6 +567,16 @@ export default function BudgetsPage() {
             </Card>
           )
         })}
+        {categories.filter(cat => cat.subcategories.some(sub => sub.actualAmount > 0 || sub.plannedAmount > 0)).length === 0 && (
+          <Card>
+            <CardContent className="py-12">
+              <div className="text-center text-muted-foreground">
+                <p className="mb-2">No transactions for this month yet.</p>
+                <p className="text-sm">Add transactions to see your spending breakdown.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Edit Budget Item Dialog */}
