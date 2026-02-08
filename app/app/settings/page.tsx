@@ -8,10 +8,10 @@ import { Separator } from '@/components/ui/separator'
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Settings</h1>
+        <p className="text-sm text-muted-foreground md:text-base">
           Manage your app preferences and configuration
         </p>
       </div>

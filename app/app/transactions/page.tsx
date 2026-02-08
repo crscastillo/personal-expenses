@@ -668,20 +668,21 @@ export default function TransactionsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
-          <p className="text-muted-foreground">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Transactions</h1>
+          <p className="text-sm text-muted-foreground md:text-base truncate">
             {selectedAccount !== 'all' 
               ? `Viewing transactions for ${selectedAccount}` 
               : 'View and manage all your transactions'}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {selectedAccount !== 'all' && (
             <Button 
-              variant="outline" 
+              variant="outline"
+              size="sm"
               onClick={() => {
                 setSelectedAccount('all')
                 window.history.pushState({}, '', '/transactions')
@@ -690,13 +691,13 @@ export default function TransactionsPage() {
               Clear Filter
             </Button>
           )}
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" size="sm">
             <Filter className="h-4 w-4" />
-            Filter
+            <span className="hidden sm:inline">Filter</span>
           </Button>
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" size="sm">
             <Download className="h-4 w-4" />
-            Export
+            <span className="hidden sm:inline">Export</span>
           </Button>
           <div>
             <Input
@@ -710,11 +711,13 @@ export default function TransactionsPage() {
             <Button 
               variant="outline" 
               className="gap-2"
+              size="sm"
               onClick={() => document.getElementById('qif-upload')?.click()}
               disabled={isProcessingImport}
             >
               <Upload className="h-4 w-4" />
-              {isProcessingImport ? 'Processing...' : 'Import QIF'}
+              <span className="hidden sm:inline">{isProcessingImport ? 'Processing...' : 'Import QIF'}</span>
+              <span className="sm:hidden">Import</span>
             </Button>
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -888,8 +891,9 @@ export default function TransactionsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
               <TableRow>
                 <TableHead 
                   className="cursor-pointer select-none hover:bg-muted/50"
@@ -996,6 +1000,7 @@ export default function TransactionsPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

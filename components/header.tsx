@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, Search, User } from 'lucide-react'
+import { Bell, Search, User, Menu } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth/context'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-export function Header() {
+interface HeaderProps {
+  onMenuClick: () => void
+}
+
+export function Header({ onMenuClick }: HeaderProps) {
   const { user, signOut } = useAuth()
   const router = useRouter()
 
@@ -24,9 +28,17 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-background px-6">
-      <div className="flex flex-1 items-center gap-4">
-        <div className="relative w-96">
+    <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
+      <div className="flex flex-1 items-center gap-2 md:gap-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <div className="relative hidden sm:block flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search transactions, budgets..."
@@ -34,8 +46,8 @@ export function Header() {
           />
         </div>
       </div>
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon">
+      <div className="flex items-center gap-2 md:gap-4">
+        <Button variant="ghost" size="icon" className="hidden sm:flex">
           <Bell className="h-5 w-5" />
         </Button>
         <DropdownMenu>

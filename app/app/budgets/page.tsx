@@ -289,32 +289,35 @@ export default function BudgetsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Monthly Budget</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Monthly Budget</h1>
+          <p className="text-sm text-muted-foreground md:text-base">
             Review your spending for {getMonthName(currentMonth)} {currentYear}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={previousMonth}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="flex items-center gap-2 rounded-lg border px-4 py-2">
-            <Calendar className="h-4 w-4" />
-            <span className="font-medium">
-              {getMonthName(currentMonth)} {currentYear}
-            </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={previousMonth}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-2 rounded-lg border px-3 py-2 md:px-4">
+              <Calendar className="h-4 w-4" />
+              <span className="text-sm font-medium md:text-base">
+                {getMonthName(currentMonth)} {currentYear}
+              </span>
+            </div>
+            <Button variant="outline" size="icon" onClick={nextMonth}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-          <Button variant="outline" size="icon" onClick={nextMonth}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2" size="sm">
                 <Copy className="h-4 w-4" />
-                Copy from Previous
+                <span className="hidden sm:inline">Copy from Previous</span>
+                <span className="sm:hidden">Copy</span>
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -332,9 +335,10 @@ export default function BudgetsPage() {
           </Dialog>
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button className="gap-2" size="sm">
                 <Plus className="h-4 w-4" />
-                Add Category
+                <span className="hidden sm:inline">Add Category</span>
+                <span className="sm:hidden">Add</span>
               </Button>
             </DialogTrigger>
             <DialogContent>
