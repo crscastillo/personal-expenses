@@ -17,7 +17,7 @@ This guide walks you through deploying the Personal Expenses app to Vercel with 
 
 ## Step 2: Set Up Database Schema
 
-You need to run your migrations on the production database.
+You need to run your migrations on the production database **before your first deployment**.
 
 ### Option A: Push from Local (Recommended)
 
@@ -34,11 +34,38 @@ You need to run your migrations on the production database.
    npx supabase db push
    ```
 
+   Or use the npm script:
+   ```bash
+   npm run supabase:push
+   ```
+
 ### Option B: Run Migration Manually
 
 1. Go to **SQL Editor** in your Supabase dashboard
 2. Copy the contents of `supabase/migrations/20260207000000_initial_schema.sql`
 3. Paste and run it in the SQL Editor
+
+### Automatic Migrations (Optional)
+
+The project includes a migration script that runs during Vercel builds. To enable automatic migrations:
+
+1. Add these optional environment variables to Vercel:
+   ```
+   SUPABASE_DB_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+   ```
+   
+   Or alternatively:
+   ```
+   SUPABASE_PROJECT_REF=your-project-ref
+   SUPABASE_DB_PASSWORD=your-db-password
+   SUPABASE_DB_REGION=us-east-1
+   ```
+
+   Find your database password in: **Settings** → **Database** → **Connection string** → **URI**
+
+2. The migration will run automatically during build via the `vercel-build` script
+
+**Note**: For security and control, it's recommended to run migrations manually (Option A or B) rather than automated during deploys.
 
 ## Step 3: Get Supabase Connection Details
 
@@ -56,16 +83,29 @@ You need to run your migrations on the production database.
 3. Configure your project:
    - **Framework Preset**: Next.js
    - **Root Directory**: ./
-   - **Build Command**: `npm run build`
+   - **Build Command**: Leave default (Vercel will use `vercel-build` script automatically)
    - **Install Command**: `npm install`
 
-4. Add **Environment Variables**:
+4. Add **Required Environment Variables**:
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
    ```
 
-5. Click **Deploy**
+5. (Optional) For automatic migrations, add:
+   ```
+   SUPABASE_DB_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+   ```
+   Or:
+   ```
+   SUPABASE_PROJECT_REF=your-project-ref
+   SUPABASE_DB_PASSWORD=your-db-password
+   SUPABASE_DB_REGION=us-east-1
+   ```
+
+6. Click **Deploy**
+
+**Note**: Vercel automatically detects the `vercel-build` script in package.json, which runs migrations before building.
 
 ### Via Vercel CLI
 
@@ -155,10 +195,14 @@ vercel --prod
 
 When you add new migrations:
 
-```bash
-# From local, push to production
-npx supabase db push
-```
+1. **Recommended**: Push from local using Supabase CLI:
+   ```bash
+   npx supabase db push
+   ```
+
+2. **Or** if you set up the optional environment variables, they'll run automatically on next deploy
+
+3. **Or** run manually in Supabase SQL Editor
 
 ## Additional Configuration
 
