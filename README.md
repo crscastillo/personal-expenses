@@ -89,6 +89,25 @@ See [LOCAL_SETUP.md](LOCAL_SETUP.md) for detailed instructions and commands.
 
 ---
 
+## Deploying to Production
+
+Ready to deploy your app? See [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md) for a complete guide on:
+
+- ✅ Setting up a production Supabase project
+- ✅ Deploying to Vercel
+- ✅ Configuring environment variables
+- ✅ Running database migrations
+- ✅ Setting up authentication
+
+**Quick Summary:**
+1. Create a Supabase project at [supabase.com](https://supabase.com)
+2. Deploy to Vercel at [vercel.com](https://vercel.com)
+3. Set environment variables in Vercel:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+---
+
 ## Alternative: Cloud Supabase Setup
 
 If you prefer using cloud Supabase instead:
