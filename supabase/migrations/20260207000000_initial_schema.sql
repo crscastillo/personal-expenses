@@ -151,14 +151,26 @@ CREATE TABLE pex.transactions (
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   account_id UUID REFERENCES pex.accounts(id) ON DELETE CASCADE,
   subcategory_id UUID REFERENCES pex.subcategories(id) ON DELETE SET NULL,
+  transfer_to_account_id UUID REFERENCES pex.accounts(id) ON DELETE CASCADE,
   amount DECIMAL(12, 2) NOT NULL,
   description TEXT NOT NULL,
   transaction_date DATE NOT NULL DEFAULT CURRENT_DATE,
   is_pending BOOLEAN DEFAULT false,
   notes TEXT,
+  reference_number VARCHAR(25),
+  reference VARCHAR(250),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT check_category_or_transfer CHECK (
+    (subcategory_id IS NOT NULL AND transfer_to_account_id IS NULL) OR
+    (subcategory_id IS NULL AND transfer_to_account_id IS NOT NULL)
+  )
 );
+
+COMMENT ON COLUMN pex.transactions.transfer_to_account_id IS 'For transfers between accounts. Mutually exclusive with subcategory_id.';
+COMMENT ON COLUMN pex.transactions.reference_number IS 'Transaction reference number (e.g., check number, transaction ID)';
+COMMENT ON COLUMN pex.transactions.reference IS 'Additional reference information or memo';
+COMMENT ON CONSTRAINT check_category_or_transfer ON pex.transactions IS 'Ensures transaction is either categorized OR a transfer, not both.';
 
 -- Due date reminders table
 CREATE TABLE pex.reminders (
@@ -438,3 +450,14 @@ FROM pex.budget_items bi
 JOIN pex.monthly_budgets mb ON bi.budget_id = mb.id
 JOIN pex.subcategories sc ON bi.subcategory_id = sc.id
 JOIN pex.categories c ON sc.category_id = c.id;
+
+-- Grant permissions to Supabase roles
+GRANT USAGE ON SCHEMA pex TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA pex TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA pex TO anon, authenticated;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA pex TO anon, authenticated;
+
+-- Set default privileges for future objects
+ALTER DEFAULT PRIVILEGES IN SCHEMA pex GRANT ALL ON TABLES TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA pex GRANT ALL ON SEQUENCES TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA pex GRANT ALL ON FUNCTIONS TO anon, authenticated;

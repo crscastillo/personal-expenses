@@ -6,12 +6,12 @@ import { LayoutDashboard, Wallet, CreditCard, Settings, PiggyBank, FolderTree } 
 import { cn } from '@/lib/utils'
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Budgets', href: '/budgets', icon: PiggyBank },
-  { name: 'Accounts', href: '/accounts', icon: Wallet },
-  { name: 'Transactions', href: '/transactions', icon: CreditCard },
-  { name: 'Categories', href: '/categories', icon: FolderTree },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Dashboard', href: '/app', icon: LayoutDashboard },
+  { name: 'Budgets', href: '/app/budgets', icon: PiggyBank },
+  { name: 'Accounts', href: '/app/accounts', icon: Wallet },
+  { name: 'Transactions', href: '/app/transactions', icon: CreditCard },
+  { name: 'Categories', href: '/app/categories', icon: FolderTree },
+  { name: 'Settings', href: '/app/settings', icon: Settings },
 ]
 
 export function Sidebar() {

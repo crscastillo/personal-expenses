@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Search, Filter, Download, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Upload, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, Filter, Download, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Upload, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react'
 import { Calculator } from '@/components/calculator'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import {
   Dialog,
   DialogContent,
@@ -27,109 +28,32 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-// Sample data - will be replaced with real data from Supabase
-const initialTransactions = [
-  {
-    id: '1',
-    date: '2026-02-07',
-    description: 'Grocery Store',
-    amount: -85.43,
-    category: 'Fixed Costs',
-    subcategory: 'Groceries',
-    account: 'Chase Checking',
-    isPending: false,
-  },
-  {
-    id: '2',
-    date: '2026-02-06',
-    description: 'Monthly Salary',
-    amount: 5000.00,
-    category: 'Income',
-    subcategory: 'Salary',
-    account: 'Chase Checking',
-    isPending: false,
-  },
-  {
-    id: '3',
-    date: '2026-02-05',
-    description: 'Restaurant',
-    amount: -42.50,
-    category: 'Guilt-Free Spending',
-    subcategory: 'Dining Out',
-    account: 'Chase Sapphire',
-    isPending: false,
-  },
-  {
-    id: '4',
-    date: '2026-02-04',
-    description: 'Electric Bill',
-    amount: -140.00,
-    category: 'Fixed Costs',
-    subcategory: 'Utilities',
-    account: 'Chase Checking',
-    isPending: false,
-  },
-  {
-    id: '5',
-    date: '2026-02-03',
-    description: 'Netflix Subscription',
-    amount: -15.99,
-    category: 'Fixed Costs',
-    subcategory: 'Subscriptions',
-    account: 'Chase Sapphire',
-    isPending: true,
-  },
-  {
-    id: '6',
-    date: '2026-02-02',
-    description: 'Coffee Shop',
-    amount: -5.75,
-    category: 'Guilt-Free Spending',
-    subcategory: 'Dining Out',
-    account: 'Cash',
-    isPending: false,
-  },
-  {
-    id: '7',
-    date: '2026-02-01',
-    description: 'Rent Payment',
-    amount: -1500.00,
-    category: 'Fixed Costs',
-    subcategory: 'Rent/Mortgage',
-    account: 'Chase Checking',
-    isPending: false,
-  },
-  {
-    id: '8',
-    date: '2026-02-01',
-    description: 'Transfer to Savings',
-    amount: -300.00,
-    category: 'Savings',
-    subcategory: 'Emergency Fund',
-    account: 'Chase Checking',
-    isPending: false,
-  },
-  {
-    id: '9',
-    date: '2026-01-31',
-    description: 'Unknown Transaction',
-    amount: -25.00,
-    category: 'Misc',
-    subcategory: 'Untracked',
-    account: 'Chase Checking',
-    isPending: false,
-  },
-]
-
 export default function TransactionsPage() {
+  const supabase = createClient()
   const searchParams = useSearchParams()
-  const accountFilter = searchParams.get('account')
+  const accountFilter = searchParams?.get('account') || null
   
-  const [transactions, setTransactions] = useState(initialTransactions)
+  const [transactions, setTransactions] = useState<any[]>([])
+  const [accounts, setAccounts] = useState<any[]>([])
+  const [subcategories, setSubcategories] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAccount, setSelectedAccount] = useState(accountFilter || 'all')
   const [sortColumn, setSortColumn] = useState<'date' | 'description' | 'category' | 'account' | 'amount'>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  
+  // Add transaction form state
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [newDescription, setNewDescription] = useState('')
+  const [newAmount, setNewAmount] = useState('')
+  const [newAccountId, setNewAccountId] = useState('')
+  const [newSubcategoryId, setNewSubcategoryId] = useState('')
+  const [newTransferToAccountId, setNewTransferToAccountId] = useState('')
+  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0])
+  const [newNotes, setNewNotes] = useState('')
+  const [newReferenceNumber, setNewReferenceNumber] = useState('')
+  const [newReference, setNewReference] = useState('')
+  
   const [editingTransaction, setEditingTransaction] = useState<any>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editedDescription, setEditedDescription] = useState('')
@@ -139,6 +63,8 @@ export default function TransactionsPage() {
   const [editedCategory, setEditedCategory] = useState('')
   const [editedSubcategory, setEditedSubcategory] = useState('')
   const [editedNotes, setEditedNotes] = useState('')
+  const [editedReferenceNumber, setEditedReferenceNumber] = useState('')
+  const [editedReference, setEditedReference] = useState('')
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [importSummary, setImportSummary] = useState<{
     imported: number
@@ -150,6 +76,13 @@ export default function TransactionsPage() {
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
   const [previewTransactions, setPreviewTransactions] = useState<any[]>([])
   const [dateFormat, setDateFormat] = useState<'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD'>('MM/DD/YYYY')
+  const [qifFileContent, setQifFileContent] = useState<string>('')
+
+  // Load transactions, accounts, and subcategories from Supabase
+  useEffect(() => {
+    loadTransactions()
+    loadAccountsAndSubcategories()
+  }, [])
 
   // Update selected account when URL changes
   useEffect(() => {
@@ -157,6 +90,205 @@ export default function TransactionsPage() {
       setSelectedAccount(accountFilter)
     }
   }, [accountFilter])
+
+  const loadTransactions = async () => {
+    try {
+      setIsLoading(true)
+      
+      // Get current user
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError) {
+        console.error('Auth error:', authError)
+        setTransactions([])
+        setIsLoading(false)
+        return
+      }
+      
+      if (!user) {
+        console.log('No authenticated user found')
+        setTransactions([])
+        setIsLoading(false)
+        return
+      }
+
+      console.log('Loading transactions for user:', user.id)
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          account:accounts!transactions_account_id_fkey(name),
+          subcategory:subcategories(
+            name,
+            category:categories(name)
+          ),
+          transfer_account:accounts!transactions_transfer_to_account_id_fkey(name)
+        `)
+        .eq('user_id', user.id)
+        .order('transaction_date', { ascending: false })
+
+      if (error) {
+        console.error('Supabase error - raw:', error)
+        console.error('Supabase error - stringified:', JSON.stringify(error, null, 2))
+        console.error('Supabase error - keys:', Object.keys(error))
+        throw error
+      }
+
+      console.log('Loaded transactions:', data?.length || 0)
+
+      // Transform data to match the component's expected format
+      const transformedTransactions = (data || []).map((t: any) => ({
+        id: t.id,
+        date: t.transaction_date,
+        description: t.description,
+        amount: parseFloat(t.amount),
+        category: t.transfer_account ? 'Transfer' : (t.subcategory?.category?.name || 'Misc'),
+        subcategory: t.transfer_account ? t.transfer_account.name : (t.subcategory?.name || 'Untracked'),
+        account: t.account?.name || 'Unknown',
+        isPending: t.is_pending || false,
+        notes: t.notes,
+        referenceNumber: t.reference_number,
+        reference: t.reference,
+        isTransfer: !!t.transfer_account,
+      }))
+
+      setTransactions(transformedTransactions)
+    } catch (error: any) {
+      console.error('Catch block error - raw:', error)
+      console.error('Catch block error - stringified:', JSON.stringify(error, null, 2))
+      console.error('Catch block error - type:', typeof error)
+      setTransactions([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadAccountsAndSubcategories = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Load accounts
+      const { data: accountsData } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('name')
+
+      // Load subcategories with their categories
+      const { data: subcategoriesData } = await supabase
+        .from('subcategories')
+        .select('*, category:categories(name)')
+        .eq('user_id', user.id)
+        .order('name')
+
+      setAccounts(accountsData || [])
+      setSubcategories(subcategoriesData || [])
+    } catch (error) {
+      console.error('Error loading accounts and subcategories:', error)
+    }
+  }
+
+  const handleAddTransaction = async () => {
+    if (!newDescription || !newAmount || !newAccountId) {
+      alert('Please fill in all required fields')
+      return
+    }
+
+    if (!newSubcategoryId && !newTransferToAccountId) {
+      alert('Please select either a subcategory or a transfer account')
+      return
+    }
+
+    if (newSubcategoryId && newTransferToAccountId) {
+      alert('Cannot select both subcategory and transfer account')
+      return
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      if (newSubcategoryId) {
+        // Regular categorized transaction
+        const transactionData = {
+          user_id: user.id,
+          account_id: newAccountId,
+          subcategory_id: newSubcategoryId,
+          amount: parseFloat(newAmount),
+          description: newDescription,
+          transaction_date: newDate,
+          notes: newNotes || null,
+          reference_number: newReferenceNumber || null,
+          reference: newReference || null,
+        }
+
+        const { error } = await supabase
+          .from('transactions')
+          .insert(transactionData)
+
+        if (error) throw error
+
+      } else if (newTransferToAccountId) {
+        // Transfer - create two transactions
+        const amount = parseFloat(newAmount)
+        const absAmount = Math.abs(amount)
+        
+        const transactions = [
+          // Transaction in source account (negative - money leaving)
+          {
+            user_id: user.id,
+            account_id: newAccountId,
+            transfer_to_account_id: newTransferToAccountId,
+            amount: -absAmount,
+            description: newDescription,
+            transaction_date: newDate,
+            notes: newNotes || null,
+            reference_number: newReferenceNumber || null,
+            reference: newReference || null,
+          },
+          // Transaction in destination account (positive - money arriving)
+          {
+            user_id: user.id,
+            account_id: newTransferToAccountId,
+            transfer_to_account_id: newAccountId,
+            amount: absAmount,
+            description: newDescription,
+            transaction_date: newDate,
+            notes: newNotes || null,
+            reference_number: newReferenceNumber || null,
+            reference: newReference || null,
+          }
+        ]
+
+        const { error } = await supabase
+          .from('transactions')
+          .insert(transactions)
+
+        if (error) throw error
+      }
+
+      // Reset form
+      setNewDescription('')
+      setNewAmount('')
+      setNewAccountId('')
+      setNewSubcategoryId('')
+      setNewTransferToAccountId('')
+      setNewDate(new Date().toISOString().split('T')[0])
+      setNewNotes('')
+      setNewReferenceNumber('')
+      setNewReference('')
+      setIsAddDialogOpen(false)
+
+      // Reload transactions
+      loadTransactions()
+    } catch (error) {
+      console.error('Error adding transaction:', error)
+      alert('Error adding transaction')
+    }
+  }
 
   const handleSort = (column: typeof sortColumn) => {
     if (sortColumn === column) {
@@ -216,44 +348,120 @@ export default function TransactionsPage() {
     setEditedAccount(transaction.account)
     setEditedCategory(transaction.category)
     setEditedSubcategory(transaction.subcategory)
-    setEditedNotes('')
+    setEditedNotes(transaction.notes || '')
+    setEditedReferenceNumber(transaction.referenceNumber || '')
+    setEditedReference(transaction.reference || '')
     setIsEditDialogOpen(true)
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingTransaction) return
     
     const amount = parseFloat(editedAmount)
     if (isNaN(amount)) return
 
-    // Update transactions state
-    setTransactions(prevTransactions =>
-      prevTransactions.map(t => {
-        if (t.id === editingTransaction.id) {
-          return {
-            ...t,
-            description: editedDescription,
-            amount: editedCategory === 'Income' ? amount : -amount,
-            date: editedDate,
-            account: editedAccount,
-            category: editedCategory,
-            subcategory: editedSubcategory,
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Update the transaction in Supabase
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          description: editedDescription,
+          amount: editedCategory === 'Income' ? amount : -amount,
+          transaction_date: editedDate,
+          notes: editedNotes || null,
+          reference_number: editedReferenceNumber || null,
+          reference: editedReference || null,
+        })
+        .eq('id', editingTransaction.id)
+
+      if (error) throw error
+
+      // Update local state
+      setTransactions(prevTransactions =>
+        prevTransactions.map(t => {
+          if (t.id === editingTransaction.id) {
+            return {
+              ...t,
+              description: editedDescription,
+              amount: editedCategory === 'Income' ? amount : -amount,
+              date: editedDate,
+              account: editedAccount,
+              category: editedCategory,
+              subcategory: editedSubcategory,
+              notes: editedNotes,
+              referenceNumber: editedReferenceNumber,
+              reference: editedReference,
+            }
           }
+          return t
+        })
+      )
+      
+      setIsEditDialogOpen(false)
+      setEditingTransaction(null)
+      loadTransactions() // Reload to get fresh data
+    } catch (error) {
+      console.error('Error updating transaction:', error)
+      alert('Error updating transaction')
+    }
+  }
+
+  const handleDeleteTransaction = async () => {
+    if (!editingTransaction) return
+    
+    if (!confirm('Are you sure you want to delete this transaction?')) {
+      return
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Check if this is a transfer transaction
+      const { data: transactionData } = await supabase
+        .from('transactions')
+        .select('transfer_to_account_id')
+        .eq('id', editingTransaction.id)
+        .single()
+
+      if (transactionData?.transfer_to_account_id) {
+        // For transfers, find and delete both transactions
+        const { data: linkedTransactions } = await supabase
+          .from('transactions')
+          .select('id, transfer_to_account_id, account_id, transaction_date, amount')
+          .eq('user_id', user.id)
+          .eq('transaction_date', editingTransaction.date)
+          .or(`id.eq.${editingTransaction.id},and(account_id.eq.${transactionData.transfer_to_account_id},amount.eq.${-parseFloat(editingTransaction.amount)})`)
+
+        if (linkedTransactions && linkedTransactions.length > 0) {
+          const idsToDelete = linkedTransactions.map(t => t.id)
+          const { error } = await supabase
+            .from('transactions')
+            .delete()
+            .in('id', idsToDelete)
+
+          if (error) throw error
         }
-        return t
-      })
-    )
-    
-    // TODO: Update in Supabase
-    console.log('Saving transaction:', {
-      id: editingTransaction.id,
-      description: editedDescription,
-      amount: editedCategory === 'Income' ? amount : -amount,
-      date: editedDate,
-    })
-    
-    setIsEditDialogOpen(false)
-    setEditingTransaction(null)
+      } else {
+        // Regular transaction - just delete it
+        const { error } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('id', editingTransaction.id)
+
+        if (error) throw error
+      }
+
+      setIsEditDialogOpen(false)
+      setEditingTransaction(null)
+      loadTransactions()
+    } catch (error) {
+      console.error('Error deleting transaction:', error)
+      alert('Error deleting transaction')
+    }
   }
 
   const handleCancelEdit = () => {
@@ -266,10 +474,11 @@ export default function TransactionsPage() {
     setEditedCategory('')
     setEditedSubcategory('')
     setEditedNotes('')
+    setEditedReferenceNumber('')
+    setEditedReference('')
   }
 
-  const parseQIFFile = async (file: File, format: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' = 'MM/DD/YYYY'): Promise<any[]> => {
-    const text = await file.text()
+  const parseQIFContent = (text: string, format: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' = 'MM/DD/YYYY'): any[] => {
     const transactions: any[] = []
     
     // Parse QIF format (line-based format)
@@ -368,8 +577,12 @@ export default function TransactionsPage() {
     setIsProcessingImport(true)
 
     try {
-      // Parse with default date format for preview
-      const parsedTransactions = await parseQIFFile(file, dateFormat)
+      // Read file content
+      const content = await file.text()
+      setQifFileContent(content)
+      
+      // Parse with current date format for preview
+      const parsedTransactions = parseQIFContent(content, dateFormat)
       
       // Show preview dialog
       setPreviewTransactions(parsedTransactions)
@@ -430,6 +643,7 @@ export default function TransactionsPage() {
       // Close preview dialog
       setIsPreviewDialogOpen(false)
       setPreviewTransactions([])
+      setQifFileContent('')
 
     } catch (error) {
       console.error('Error importing transactions:', error)
@@ -440,14 +654,16 @@ export default function TransactionsPage() {
   const handleCancelImport = () => {
     setIsPreviewDialogOpen(false)
     setPreviewTransactions([])
+    setQifFileContent('')
   }
 
   // Re-parse when date format changes
-  const handleDateFormatChange = async (newFormat: typeof dateFormat) => {
+  const handleDateFormatChange = (newFormat: typeof dateFormat) => {
     setDateFormat(newFormat)
-    if (previewTransactions.length > 0) {
-      // Re-parse with new format - need to store the file somehow
-      // For now, just update the format for next import
+    if (qifFileContent) {
+      // Re-parse with new format
+      const parsedTransactions = parseQIFContent(qifFileContent, newFormat)
+      setPreviewTransactions(parsedTransactions)
     }
   }
 
@@ -501,14 +717,14 @@ export default function TransactionsPage() {
               {isProcessingImport ? 'Processing...' : 'Import QIF'}
             </Button>
           </div>
-          <Dialog>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
                 Add Transaction
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Transaction</DialogTitle>
                 <DialogDescription>
@@ -517,67 +733,131 @@ export default function TransactionsPage() {
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input id="description" placeholder="e.g., Coffee at Starbucks" />
+                  <Label htmlFor="new-description">Description *</Label>
+                  <Input 
+                    id="new-description" 
+                    placeholder="e.g., Coffee at Starbucks"
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="amount">Amount</Label>
+                  <Label htmlFor="new-amount">Amount *</Label>
                   <Input
-                    id="amount"
+                    id="new-amount"
                     type="number"
                     step="0.01"
                     placeholder="0.00"
+                    value={newAmount}
+                    onChange={(e) => setNewAmount(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Use negative for expenses, positive for income
+                    {newTransferToAccountId 
+                      ? 'Enter transfer amount (will be deducted from source and added to destination)'
+                      : 'Use negative for expenses, positive for income'
+                    }
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="account">Account</Label>
+                  <Label htmlFor="new-account">Account *</Label>
                   <select
-                    id="account"
+                    id="new-account"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                    value={newAccountId}
+                    onChange={(e) => setNewAccountId(e.target.value)}
                   >
-                    <option>Chase Checking</option>
-                    <option>Ally Savings</option>
-                    <option>Chase Sapphire Reserve</option>
-                    <option>Cash</option>
+                    <option value="">Select an account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="category">Category</Label>
+                  <Label htmlFor="new-subcategory">Subcategory</Label>
                   <select
-                    id="category"
+                    id="new-subcategory"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                    value={newSubcategoryId}
+                    onChange={(e) => {
+                      setNewSubcategoryId(e.target.value)
+                      if (e.target.value) setNewTransferToAccountId('')
+                    }}
+                    disabled={!!newTransferToAccountId}
                   >
-                    <option>Income</option>
-                    <option>Investments</option>
-                    <option>Savings</option>
-                    <option>Fixed Costs</option>
-                    <option>Guilt-Free Spending</option>
-                    <option>Misc</option>
+                    <option value="">None (for transfers)</option>
+                    {subcategories.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.category?.name} → {sub.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="subcategory">Subcategory</Label>
+                  <Label htmlFor="new-transfer">Transfer To Account</Label>
                   <select
-                    id="subcategory"
+                    id="new-transfer"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                    value={newTransferToAccountId}
+                    onChange={(e) => {
+                      setNewTransferToAccountId(e.target.value)
+                      if (e.target.value) setNewSubcategoryId('')
+                    }}
+                    disabled={!!newSubcategoryId}
                   >
-                    <option>Groceries</option>
-                    <option>Dining Out</option>
-                    <option>Utilities</option>
+                    <option value="">None (regular transaction)</option>
+                    {accounts.filter(a => a.id !== newAccountId).map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
                   </select>
+                  <p className="text-xs text-muted-foreground">
+                    Select this for transfers between your accounts
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="date">Date</Label>
-                  <Input id="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} />
+                  <Label htmlFor="new-date">Date *</Label>
+                  <Input 
+                    id="new-date" 
+                    type="date" 
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="notes">Notes (Optional)</Label>
-                  <Input id="notes" placeholder="Additional details" />
+                  <Label htmlFor="new-notes">Notes (Optional)</Label>
+                  <Input 
+                    id="new-notes" 
+                    placeholder="Additional details"
+                    value={newNotes}
+                    onChange={(e) => setNewNotes(e.target.value)}
+                  />
                 </div>
-                <Button className="w-full">Add Transaction</Button>
+                <div className="space-y-2">
+                  <Label htmlFor="new-reference-number">Reference Number (Optional)</Label>
+                  <Input 
+                    id="new-reference-number" 
+                    placeholder="e.g., Check #, Transaction ID"
+                    maxLength={25}
+                    value={newReferenceNumber}
+                    onChange={(e) => setNewReferenceNumber(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-reference">Reference (Optional)</Label>
+                  <Input 
+                    id="new-reference" 
+                    placeholder="Additional reference or memo"
+                    maxLength={250}
+                    value={newReference}
+                    onChange={(e) => setNewReference(e.target.value)}
+                  />
+                </div>
+                <Button className="w-full" onClick={handleAddTransaction}>
+                  Add Transaction
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -674,6 +954,11 @@ export default function TransactionsPage() {
                         </Badge>
                       )}
                     </div>
+                    {transaction.referenceNumber && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Ref: {transaction.referenceNumber}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
@@ -681,6 +966,11 @@ export default function TransactionsPage() {
                       <span className="text-xs text-muted-foreground">
                         {transaction.subcategory}
                       </span>
+                      {transaction.reference && (
+                        <span className="text-xs text-muted-foreground italic mt-1">
+                          {transaction.reference}
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>{transaction.account}</TableCell>
@@ -800,6 +1090,35 @@ export default function TransactionsPage() {
                   onChange={(e) => setEditedDate(e.target.value)}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-notes">Notes</Label>
+                <Input
+                  id="edit-notes"
+                  placeholder="Additional details"
+                  value={editedNotes}
+                  onChange={(e) => setEditedNotes(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-reference-number">Reference Number</Label>
+                <Input
+                  id="edit-reference-number"
+                  placeholder="e.g., Check #, Transaction ID"
+                  maxLength={25}
+                  value={editedReferenceNumber}
+                  onChange={(e) => setEditedReferenceNumber(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-reference">Reference</Label>
+                <Input
+                  id="edit-reference"
+                  placeholder="Additional reference or memo"
+                  maxLength={250}
+                  value={editedReference}
+                  onChange={(e) => setEditedReference(e.target.value)}
+                />
+              </div>
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={handleSaveEdit}>
                   Save Changes
@@ -807,9 +1126,96 @@ export default function TransactionsPage() {
                 <Button variant="outline" className="flex-1" onClick={handleCancelEdit}>
                   Cancel
                 </Button>
+                <Button 
+                  variant="destructive" 
+                  size="icon"
+                  onClick={handleDeleteTransaction}
+                  title="Delete transaction"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Preview Dialog */}
+      <Dialog open={isPreviewDialogOpen} onOpenChange={setIsPreviewDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Preview Import</DialogTitle>
+            <DialogDescription>
+              Review transactions before importing. {previewTransactions.length} transactions found.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="date-format">Date Format</Label>
+              <select
+                id="date-format"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                value={dateFormat}
+                onChange={(e) => handleDateFormatChange(e.target.value as typeof dateFormat)}
+              >
+                <option value="MM/DD/YYYY">MM/DD/YYYY (US Format)</option>
+                <option value="DD/MM/YYYY">DD/MM/YYYY (European Format)</option>
+                <option value="YYYY-MM-DD">YYYY-MM-DD (ISO Format)</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Select the date format used in your QIF file. If dates look incorrect, try a different format.
+              </p>
+            </div>
+
+            {previewTransactions.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold">Transaction Preview</h4>
+                <div className="max-h-[400px] overflow-y-auto rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewTransactions.slice(0, 100).map((trans, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{formatDate(trans.date)}</TableCell>
+                          <TableCell className="max-w-[400px] truncate">
+                            {trans.description}
+                          </TableCell>
+                          <TableCell
+                            className="text-right font-medium"
+                            style={{
+                              color: trans.amount > 0 ? '#22c55e' : '#ef4444',
+                            }}
+                          >
+                            {formatCurrency(Math.abs(trans.amount))}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {previewTransactions.length > 100 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Showing first 100 of {previewTransactions.length} transactions
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={handleCancelImport}>
+                Cancel
+              </Button>
+              <Button onClick={handleConfirmImport}>
+                Import {previewTransactions.length} Transactions
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

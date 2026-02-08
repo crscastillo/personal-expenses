@@ -382,7 +382,7 @@ export default function BudgetsPage() {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip formatter={(value) => formatCurrency(Number(value) || 0)} />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
@@ -410,7 +410,7 @@ export default function BudgetsPage() {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip formatter={(value) => formatCurrency(Number(value) || 0)} />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>

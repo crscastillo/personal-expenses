@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus, Wallet, CreditCard, DollarSign, TrendingUp } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import {
   Dialog,
   DialogContent,
@@ -18,61 +19,21 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 
-// Sample data - will be replaced with real data from Supabase
-const accounts = [
-  {
-    id: '1',
-    name: 'Chase Checking',
-    type: 'checking' as const,
-    institution: 'Chase Bank',
-    accountNumber: '****1234',
-    balance: 5420.50,
-    color: '#3b82f6',
-    isActive: true,
-  },
-  {
-    id: '2',
-    name: 'Ally Savings',
-    type: 'savings' as const,
-    institution: 'Ally Bank',
-    accountNumber: '****5678',
-    balance: 15000.00,
-    color: '#22c55e',
-    isActive: true,
-  },
-  {
-    id: '3',
-    name: 'Chase Sapphire Reserve',
-    type: 'credit_card' as const,
-    institution: 'Chase',
-    accountNumber: '****9012',
-    balance: -1250.75,
-    color: '#8b5cf6',
-    isActive: true,
-  },
-  {
-    id: '4',
-    name: 'Cash',
-    type: 'cash' as const,
-    institution: null,
-    accountNumber: null,
-    balance: 200.00,
-    color: '#f59e0b',
-    isActive: true,
-  },
-  {
-    id: '5',
-    name: 'Vanguard Brokerage',
-    type: 'investment' as const,
-    institution: 'Vanguard',
-    accountNumber: '****3456',
-    balance: 45000.00,
-    color: '#ec4899',
-    isActive: true,
-  },
-]
+type AccountType = 'checking' | 'savings' | 'credit_card' | 'cash' | 'investment'
 
-const accountTypeIcons = {
+interface Account {
+  id: string
+  name: string
+  type: AccountType
+  institution: string | null
+  account_number: string | null
+  balance: number
+  color: string
+  is_active: boolean
+  include_in_budget: boolean
+}
+
+const accountTypeIcons: Record<AccountType, any> = {
   checking: Wallet,
   savings: DollarSign,
   credit_card: CreditCard,
@@ -80,7 +41,7 @@ const accountTypeIcons = {
   investment: TrendingUp,
 }
 
-const accountTypeLabels = {
+const accountTypeLabels: Record<AccountType, string> = {
   checking: 'Checking',
   savings: 'Savings',
   credit_card: 'Credit Card',
@@ -90,17 +51,93 @@ const accountTypeLabels = {
 
 export default function AccountsPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
-  const [accountsList, setAccountsList] = useState(accounts)
+  const [accountsList, setAccountsList] = useState<Account[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   
   // Form state
   const [newAccountName, setNewAccountName] = useState('')
-  const [newAccountType, setNewAccountType] = useState<'checking' | 'savings' | 'credit_card' | 'cash' | 'investment'>('checking')
+  const [newAccountType, setNewAccountType] = useState<AccountType>('checking')
   const [newInstitution, setNewInstitution] = useState('')
   const [newAccountNumber, setNewAccountNumber] = useState('')
   const [newBalance, setNewBalance] = useState('')
   const [newColor, setNewColor] = useState('#3b82f6')
+
+  // Load accounts from Supabase
+  useEffect(() => {
+    loadAccounts()
+  }, [])
+
+  const loadAccounts = async () => {
+    try {
+      setIsLoading(true)
+      
+      // Get current user
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError) {
+        console.error('Auth error:', authError)
+        setAccountsList([])
+        setIsLoading(false)
+        return
+      }
+      
+      if (!user) {
+        console.log('No authenticated user found')
+        setAccountsList([])
+        setIsLoading(false)
+        return
+      }
+
+      console.log('Loading accounts for user:', user.id)
+
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Supabase error - raw:', error)
+        console.error('Supabase error - stringified:', JSON.stringify(error, null, 2))
+        console.error('Supabase error - keys:', Object.keys(error))
+        throw error
+      }
+
+      // Load transactions for all accounts to calculate actual balances
+      const { data: transactions, error: transError } = await supabase
+        .from('transactions')
+        .select('account_id, amount')
+        .eq('user_id', user.id)
+
+      if (transError) {
+        console.error('Error loading transactions:', transError)
+      }
+
+      // Calculate balance for each account based on transactions
+      const accountsWithBalances = (data || []).map(account => {
+        const accountTransactions = transactions?.filter(t => t.account_id === account.id) || []
+        const calculatedBalance = accountTransactions.reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0)
+        return {
+          ...account,
+          balance: calculatedBalance
+        }
+      })
+
+      console.log('Loaded accounts:', accountsWithBalances.length)
+      setAccountsList(accountsWithBalances)
+    } catch (error: any) {
+      console.error('Catch block error - raw:', error)
+      console.error('Catch block error - stringified:', JSON.stringify(error, null, 2))
+      console.error('Catch block error - type:', typeof error)
+      setAccountsList([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const totalAssets = accountsList
     .filter((a) => a.type !== 'credit_card' && a.balance > 0)
@@ -112,7 +149,7 @@ export default function AccountsPage() {
 
   const netWorth = totalAssets - totalLiabilities
 
-  const handleAddAccount = () => {
+  const handleAddAccount = async () => {
     if (!newAccountName.trim()) {
       alert('Account name is required')
       return
@@ -120,30 +157,76 @@ export default function AccountsPage() {
 
     const balance = parseFloat(newBalance) || 0
 
-    const newAccount = {
-      id: `${Date.now()}`,
-      name: newAccountName,
-      type: newAccountType,
-      institution: newInstitution || null,
-      accountNumber: newAccountNumber || null,
-      balance,
-      color: newColor,
-      isActive: true,
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('You must be logged in to add an account')
+        return
+      }
+
+      // Save account to Supabase (balance field is just for reference/initialization)
+      const { data: accountData, error } = await supabase
+        .from('accounts')
+        .insert([{
+          user_id: user.id,
+          name: newAccountName,
+          type: newAccountType,
+          institution: newInstitution || null,
+          account_number: newAccountNumber || null,
+          balance,
+          color: newColor,
+          is_active: true,
+          include_in_budget: true,
+        }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      console.log('Account added successfully:', accountData)
+
+      // If there's an initial balance, create an initial transaction
+      if (balance !== 0) {
+        // Get "Untracked" subcategory for initial balance
+        const { data: subcategories } = await supabase
+          .from('subcategories')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('name', 'Untracked')
+          .limit(1)
+          .single()
+
+        if (subcategories) {
+          await supabase
+            .from('transactions')
+            .insert({
+              user_id: user.id,
+              account_id: accountData.id,
+              subcategory_id: subcategories.id,
+              amount: balance,
+              description: 'Initial Balance',
+              transaction_date: new Date().toISOString().split('T')[0],
+              notes: 'Opening balance for account',
+            })
+        }
+      }
+
+      // Reload accounts from database
+      await loadAccounts()
+
+      // Reset form and close dialog
+      setNewAccountName('')
+      setNewAccountType('checking')
+      setNewInstitution('')
+      setNewAccountNumber('')
+      setNewBalance('')
+      setNewColor('#3b82f6')
+      setIsAddDialogOpen(false)
+    } catch (error) {
+      console.error('Error adding account:', error)
+      alert('Error adding account. Please try again.')
     }
-
-    setAccountsList([...accountsList, newAccount])
-
-    // TODO: Save to Supabase
-    console.log('Adding account:', newAccount)
-
-    // Reset form and close dialog
-    setNewAccountName('')
-    setNewAccountType('checking')
-    setNewInstitution('')
-    setNewAccountNumber('')
-    setNewBalance('')
-    setNewColor('#3b82f6')
-    setIsAddDialogOpen(false)
   }
 
   return (
@@ -238,8 +321,14 @@ export default function AccountsPage() {
         </Dialog>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Loading accounts...</p>
+        </div>
+      ) : (
+        <>
+          {/* Summary Cards */}
+          <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Assets</CardTitle>
@@ -297,7 +386,7 @@ export default function AccountsPage() {
               key={account.id}
               className="cursor-pointer transition-all hover:shadow-md"
               onClick={() => {
-                router.push(`/transactions?account=${encodeURIComponent(account.name)}`)
+                router.push(`/app/transactions?account=${encodeURIComponent(account.name)}`)
               }}
             >
               <CardHeader>
@@ -314,12 +403,12 @@ export default function AccountsPage() {
                       {account.institution && (
                         <CardDescription className="text-xs">
                           {account.institution}
-                          {account.accountNumber && ` • ${account.accountNumber}`}
+                          {account.account_number && ` • ${account.account_number}`}
                         </CardDescription>
                       )}
-                      {!account.institution && account.accountNumber && (
+                      {!account.institution && account.account_number && (
                         <CardDescription className="text-xs">
-                          {account.accountNumber}
+                          {account.account_number}
                         </CardDescription>
                       )}
                     </div>
@@ -355,6 +444,8 @@ export default function AccountsPage() {
           )
         })}
       </div>
+        </>
+      )}
     </div>
   )
 }
