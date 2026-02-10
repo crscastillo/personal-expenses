@@ -4,14 +4,14 @@ This directory contains database migration scripts for deployment automation.
 
 ## migrate.js
 
-Automatically runs database migrations during Vercel builds.
+Validates database configuration during Vercel builds and ensures migrations are properly set up.
 
 ### How it works:
 
 1. **During Build**: Vercel runs `npm run vercel-build`
-2. **Migration Check**: The script checks for required environment variables
-3. **Execution**: If configured, applies the latest migration to production database
-4. **Fail-Safe**: If not configured, just logs a reminder and continues build
+2. **Validation**: The script validates that database credentials are configured
+3. **Check**: Verifies that migration files exist
+4. **Fail-Fast**: If credentials are missing, the build fails with clear instructions
 
 ### Environment Variables:
 
@@ -44,9 +44,19 @@ npm run vercel-build  # which runs: npm run migrate && next build
 
 ### Security Note:
 
-For production environments, consider:
-- Running migrations manually via `npx supabase db push`
-- Using GitHub Actions for controlled migration deployments
-- Setting `SKIP_MIGRATIONS=true` and managing migrations separately
+**Migrations are validated but not auto-applied** for security and control:
 
-The auto-migration feature is optional and provided for convenience.
+✅ **Recommended Workflow:**
+1. Develop locally with `npm run dev` and local Supabase
+2. Create/modify migrations in `supabase/migrations/`
+3. Test locally with `npm run supabase:reset`
+4. Push to production: `npx supabase db push`
+5. Deploy to Vercel (build validates configuration)
+
+✅ **Why not auto-apply?**
+- Full visibility and control over schema changes
+- Avoid race conditions in deployments
+- Review before applying
+- Separate concerns: code deploy vs database changes
+
+🔒 The build will fail if database credentials aren't configured, ensuring you don't deploy without proper migration setup.

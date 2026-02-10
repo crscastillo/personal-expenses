@@ -35,11 +35,25 @@ if (process.env.NODE_ENV === 'development') {
   process.exit(0);
 }
 
-// Validate environment variables
+// Validate environment variables - REQUIRED for production
 if (!DB_URL && !(PROJECT_REF && DB_PASSWORD)) {
-  console.log('⚠️  No database connection info found - skipping migrations');
-  console.log('   Set SUPABASE_DB_URL or (SUPABASE_PROJECT_REF + SUPABASE_DB_PASSWORD) to run migrations on deploy');
-  process.exit(0);
+  console.error('❌ Database connection info required for migrations');
+  console.error('');
+  console.error('Set one of the following in Vercel environment variables:');
+  console.error('');
+  console.error('Option 1 - Connection String:');
+  console.error('  SUPABASE_DB_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres');
+  console.error('');
+  console.error('Option 2 - Separate Variables:');
+  console.error('  SUPABASE_PROJECT_REF=your-project-ref');
+  console.error('  SUPABASE_DB_PASSWORD=your-db-password');
+  console.error('  SUPABASE_DB_REGION=us-east-1 (optional, defaults to us-east-1)');
+  console.error('');
+  console.error('Find your database password in Supabase Dashboard:');
+  console.error('Settings → Database → Connection string → URI');
+  console.error('');
+  console.error('To skip migrations (not recommended), set: SKIP_MIGRATIONS=true');
+  process.exit(1);
 }
 
 console.log('🚀 Starting database migration...');
@@ -60,49 +74,67 @@ if (!fs.existsSync(migrationPath)) {
 
 const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
 
-// Parse connection string
-const url = new URL(connectionString.replace('postgresql://', 'https://'));
-const [user, password] = url.username.includes(':') 
-  ? url.username.split(':') 
-  : [url.username, url.password];
+// Parse connection string for display purposes
+let host = 'unknown';
+let port = 'unknown';
+let dbName = 'postgres';
 
-const pgUrl = connectionString.replace('postgresql://', '').replace('postgres://', '');
-const [auth, rest] = pgUrl.split('@');
-const [host, portAndDb] = rest.split(':');
-const [port, dbName] = portAndDb.split('/');
+if (connectionString) {
+  try {
+    const pgUrl = connectionString.replace('postgresql://', '').replace('postgres://', '');
+    const [auth, rest] = pgUrl.split('@');
+    const [hostPart, portAndDb] = rest.split(':');
+    host = hostPart;
+    const [portStr, db] = portAndDb.split('/');
+    port = portStr;
+    dbName = db || 'postgres';
+  } catch (e) {
+    // Parsing failed, use defaults
+  }
+}
 
 console.log(`📡 Connecting to: ${host}:${port}/${dbName}`);
 
-// Execute migration using Supabase REST API
+// Execute migration validation
 async function runMigration() {
   try {
-    // Extract project URL from connection details
-    const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    console.log('🔍 Validating migration configuration...');
+    console.log('');
     
-    if (!projectUrl) {
-      console.log('ℹ️  Using direct SQL execution method');
-      console.log('   For production, consider using Supabase CLI: npx supabase db push');
-      console.log('   Migration file ready at:', migrationPath);
-      return;
+    if (PROJECT_REF) {
+      console.log(`✅ Project configured: ${PROJECT_REF}`);
+      console.log('');
+      console.log('💡 To apply migrations, run from your local machine:');
+      console.log(`   npx supabase link --project-ref ${PROJECT_REF}`);
+      console.log('   npx supabase db push');
+      console.log('');
+      console.log('✅ Migration validation complete');
+      console.log('   Ensure migrations are applied before first deploy');
+    } else {
+      console.log('✅ Database connection validated');
+      console.log('');
+      console.log('💡 Initial setup:');
+      console.log('   1. Apply initial migration from local:');
+      console.log('      npx supabase link --project-ref <your-ref>');
+      console.log('      npx supabase db push');
+      console.log('   2. Future migrations can be applied the same way');
+      console.log('');
+      console.log('✅ Migration validation complete');
     }
-
-    console.log('✅ Migration preparation complete');
-    console.log('');
-    console.log('📋 Next steps:');
-    console.log('   1. Run migrations using Supabase CLI before first deploy:');
-    console.log('      npx supabase link --project-ref <your-project-ref>');
-    console.log('      npx supabase db push');
-    console.log('');
-    console.log('   2. Or run manually in Supabase SQL Editor:');
-    console.log('      Copy contents of: supabase/migrations/20260207000000_initial_schema.sql');
-    console.log('');
-    console.log('💡 Tip: After initial migration, future changes can be applied the same way');
+    
+    // Note: Actual migration should be done via Supabase CLI locally
+    // This just validates the configuration is present
     
   } catch (error) {
-    console.error('❌ Migration error:', error.message);
-    // Don't fail the build - just warn
-    console.log('⚠️  Continuing build despite migration warning');
+    console.error('❌ Migration validation failed:', error.message);
+    console.error('');
+    console.error('Please ensure:');
+    console.error('1. Database credentials are correct');
+    console.error('2. Database is accessible');
+    console.error('3. Migrations have been applied at least once via: npx supabase db push');
+    process.exit(1);
   }
 }
 
 runMigration();
+

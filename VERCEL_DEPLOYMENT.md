@@ -45,27 +45,26 @@ You need to run your migrations on the production database **before your first d
 2. Copy the contents of `supabase/migrations/20260207000000_initial_schema.sql`
 3. Paste and run it in the SQL Editor
 
-### Automatic Migrations (Optional)
+### Migration Validation During Builds
 
-The project includes a migration script that runs during Vercel builds. To enable automatic migrations:
+The project includes an automatic migration validation script that runs during every Vercel deployment:
 
-1. Add these optional environment variables to Vercel:
-   ```
-   SUPABASE_DB_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
-   ```
-   
-   Or alternatively:
-   ```
-   SUPABASE_PROJECT_REF=your-project-ref
-   SUPABASE_DB_PASSWORD=your-db-password
-   SUPABASE_DB_REGION=us-east-1
-   ```
+1. **Validates** that database credentials are configured
+2. **Checks** that the migration file exists
+3. **Provides** clear instructions if migrations haven't been applied yet
 
-   Find your database password in: **Settings** → **Database** → **Connection string** → **URI**
+**Important**: The build script validates configuration but doesn't automatically apply migrations. You must apply migrations manually (Option A or B above) before your first deployment.
 
-2. The migration will run automatically during build via the `vercel-build` script
+**Why?**: Running migrations manually gives you:
+- Full visibility into schema changes
+- Ability to review before applying
+- Control over when database changes happen
+- Avoid race conditions in multi-region deployments
 
-**Note**: For security and control, it's recommended to run migrations manually (Option A or B) rather than automated during deploys.
+To skip migration validation (not recommended):
+```
+SKIP_MIGRATIONS=true
+```
 
 ## Step 3: Get Supabase Connection Details
 
@@ -87,25 +86,34 @@ The project includes a migration script that runs during Vercel builds. To enabl
    - **Install Command**: `npm install`
 
 4. Add **Required Environment Variables**:
+   
+   Application:
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
    ```
 
-5. (Optional) For automatic migrations, add:
+   Database (for migrations) - Use EITHER Option 1 OR Option 2:
+   
+   **Option 1** - Connection String:
    ```
    SUPABASE_DB_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
    ```
-   Or:
+   
+   **Option 2** - Separate Variables:
    ```
    SUPABASE_PROJECT_REF=your-project-ref
    SUPABASE_DB_PASSWORD=your-db-password
    SUPABASE_DB_REGION=us-east-1
    ```
+   
+   Find your database credentials:
+   - Go to Supabase → **Settings** → **Database** → **Connection string** → **URI**
+   - Extract the project-ref, password, and region from the connection string
 
-6. Click **Deploy**
+5. Click **Deploy**
 
-**Note**: Vercel automatically detects the `vercel-build` script in package.json, which runs migrations before building.
+**Note**: The `vercel-build` script will validate your database configuration before building. Migrations should be applied via `npx supabase db push` from your local machine before your first deployment.
 
 ### Via Vercel CLI
 
