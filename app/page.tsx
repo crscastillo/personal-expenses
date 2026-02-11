@@ -29,11 +29,11 @@ export default function LandingPage() {
           </h1>
           <p className="text-xl text-gray-600 mb-8">
             Build a guilt-free spending plan that aligns with your values. Track expenses,
-            manage budgets, and achieve financial freedom with our intuitive platform.
+            manage plans, and achieve financial freedom with our intuitive platform.
           </p>
           <Link href="/signup">
             <Button size="lg" className="text-lg px-8 py-6">
-              Start Your Free Budget
+              Start Your Free Plan
             </Button>
           </Link>
         </div>
@@ -43,9 +43,9 @@ export default function LandingPage() {
           <Card>
             <CardHeader>
               <PieChart className="h-12 w-12 text-blue-600 mb-4" />
-              <CardTitle>Smart Budgeting</CardTitle>
+              <CardTitle>Smart Spending Plan</CardTitle>
               <CardDescription>
-                Create budgets based on the conscious spending methodology. Allocate
+                Create spending plans based on the conscious spending methodology. Allocate
                 your money to what truly matters.
               </CardDescription>
             </CardHeader>
@@ -96,7 +96,7 @@ export default function LandingPage() {
                 2
               </div>
               <div>
-                <h3 className="text-xl font-semibold mb-2">Create Your Budget</h3>
+                <h3 className="text-xl font-semibold mb-2">Create Your Plan</h3>
                 <p className="text-gray-600">
                   Define categories for fixed costs, investments, savings, and guilt-free
                   spending. Set amounts that work for your lifestyle.

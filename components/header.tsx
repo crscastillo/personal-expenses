@@ -27,6 +27,10 @@ export function Header({ onMenuClick }: HeaderProps) {
     router.push('/')
   }
 
+  const handleSettings = () => {
+    router.push('/platform/settings')
+  }
+
   return (
     <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
       <div className="flex flex-1 items-center gap-2 md:gap-4">
@@ -41,7 +45,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         <div className="relative hidden sm:block flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search transactions, budgets..."
+            placeholder="Search transactions, plans..."
             className="pl-9"
           />
         </div>
@@ -62,8 +66,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               {user?.email}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleSettings}>Settings</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut}>Sign out</DropdownMenuItem>
           </DropdownMenuContent>

@@ -32,13 +32,13 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Protect app routes - redirect to login if not authenticated
-  if (request.nextUrl.pathname.startsWith('/app') && !user) {
+  if (request.nextUrl.pathname.startsWith('/platform') && !user) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
   // Redirect to app if authenticated and trying to access auth pages
   if ((request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup') && user) {
-    return NextResponse.redirect(new URL('/app', request.url))
+    return NextResponse.redirect(new URL('/platform', request.url))
   }
 
   return supabaseResponse
@@ -46,7 +46,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/app/:path*',
+    '/platform/:path*',
     '/login',
     '/signup',
   ],

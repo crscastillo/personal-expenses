@@ -1,5 +1,6 @@
-export type Category = {
+export type ExpenseGroup = {
   id: string
+  user_id: string
   name: string
   description: string | null
   type: 'income' | 'expense'
@@ -9,12 +10,12 @@ export type Category = {
   created_at: string
 }
 
-export type Subcategory = {
+export type ExpenseCategory = {
   id: string
-  category_id: string
+  expense_group_id: string
+  user_id: string
   name: string
   description: string | null
-  user_id: string | null
   is_custom: boolean
   created_at: string
 }
@@ -30,12 +31,12 @@ export type Account = {
   currency: string
   color: string
   is_active: boolean
-  include_in_budget: boolean
+  include_in_plan: boolean
   created_at: string
   updated_at: string
 }
 
-export type MonthlyBudget = {
+export type MonthlyPlan = {
   id: string
   user_id: string
   month: number
@@ -44,10 +45,10 @@ export type MonthlyBudget = {
   updated_at: string
 }
 
-export type BudgetItem = {
+export type PlanItem = {
   id: string
-  budget_id: string
-  subcategory_id: string
+  plan_id: string
+  expense_category_id: string
   planned_amount: number
   due_date: string | null
   notes: string | null
@@ -59,7 +60,7 @@ export type Transaction = {
   id: string
   user_id: string
   account_id: string
-  subcategory_id: string | null
+  expense_category_id: string | null
   amount: number
   description: string
   transaction_date: string
@@ -72,24 +73,24 @@ export type Transaction = {
 export type Reminder = {
   id: string
   user_id: string
-  budget_item_id: string
+  plan_item_id: string
   due_date: string
   is_completed: boolean
   completed_at: string | null
   created_at: string
 }
 
-export type BudgetSummary = {
-  budget_item_id: string
-  budget_id: string
+export type PlanSummary = {
+  plan_item_id: string
+  plan_id: string
   user_id: string
   month: number
   year: number
-  category_id: string
-  category_name: string
-  category_color: string
-  subcategory_id: string
-  subcategory_name: string
+  expense_group_id: string
+  expense_group_name: string
+  expense_group_color: string
+  expense_category_id: string
+  expense_category_name: string
   planned_amount: number
   due_date: string | null
   actual_amount: number

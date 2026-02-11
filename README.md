@@ -15,14 +15,14 @@ A Next.js application for tracking personal and family expenses, inspired by Ram
 - Visual charts and graphs
 - Category-wise spending overview
 - Monthly trend analysis
-- Budget progress tracking
+- Plan progress tracking
 
-💰 **Budget Management**
-- Monthly budget planning
-- Copy budgets from previous months
+💰 **Plan Management**
+- Monthly financial planning
+- Copy plans from previous months
 - Custom subcategories
 - Due date reminders
-- Budget vs actual tracking
+- Plan vs actual tracking
 
 🏦 **Account Management**
 - Multiple bank accounts
@@ -40,7 +40,7 @@ A Next.js application for tracking personal and family expenses, inspired by Ram
 
 🔔 **Notifications**
 - Due date reminders
-- Budget alerts
+- Plan alerts
 - Toast notifications
 
 ## Tech Stack
@@ -87,6 +87,10 @@ Access Supabase Studio at: **http://127.0.0.1:54323**
 
 See [LOCAL_SETUP.md](LOCAL_SETUP.md) for detailed instructions and commands.
 
+### Authentication Configuration
+
+Email confirmation is **disabled by default** for local development (instant signup). For production configuration and customization options, see [AUTH_CONFIGURATION.md](AUTH_CONFIGURATION.md).
+
 ---
 
 ## Deploying to Production
@@ -128,8 +132,8 @@ If you prefer using cloud Supabase instead:
 personal-expenses/
 ├── app/
 │   ├── page.tsx              # Dashboard
-│   ├── budgets/
-│   │   └── page.tsx          # Budget management
+│   ├── plans/
+│   │   └── page.tsx          # Plan management
 │   ├── accounts/
 │   │   └── page.tsx          # Account management
 │   ├── transactions/
@@ -156,10 +160,10 @@ personal-expenses/
 
 ## Usage Guide
 
-### Creating Your First Budget
+### Creating Your First Plan
 
-1. Go to the **Budgets** page
-2. Use the month selector to choose your budget month
+1. Go to the **Plans** page
+2. Use the month selector to choose your plan month
 3. Click "Add Category" to add custom subcategories
 4. Set planned amounts for each subcategory
 5. Optionally set due dates for bills
@@ -198,7 +202,7 @@ The dashboard shows:
 - Total income, expenses, savings, and net balance
 - Spending breakdown by category (pie chart)
 - Income vs expenses trend (bar chart)
-- Budget progress for each category
+- Plan progress for each category
 
 ## Database Schema
 
@@ -207,12 +211,12 @@ The app uses a PostgreSQL database (via Supabase) with the following main tables
 - **categories**: Predefined main categories
 - **subcategories**: Types within each category (can be custom)
 - **accounts**: Bank accounts, credit cards, cash
-- **monthly_budgets**: Budget for each month
-- **budget_items**: Individual budget allocations
+- **monthly_plans**: Monthly financial plans
+- **plan_items**: Individual plan allocations
 - **transactions**: All financial transactions
 - **reminders**: Due date reminders
 
-All tables are in the `pex` schema with Row Level Security enabled.
+All tables are in the `public` schema with Row Level Security enabled.
 
 ## Conscious Spending Philosophy
 
@@ -230,7 +234,7 @@ This app follows Ramit Sethi's conscious spending plan:
 While the 5 main categories are predefined, you can:
 - Add custom subcategories within any category
 - Set your own target percentages
-- Create specific budget items for your needs
+- Create specific plan items for your needs
 
 ### Styling
 

@@ -48,7 +48,7 @@ const categoryColors: Record<string, string> = {
   'Misc': '#6b7280',
 }
 
-export default function BudgetsPage() {
+export default function PlansPage() {
   const supabase = createClient()
   const [currentMonth, setCurrentMonth] = useState(getCurrentMonth())
   const [currentYear, setCurrentYear] = useState(getCurrentYear())
@@ -59,13 +59,16 @@ export default function BudgetsPage() {
   const [editedAmount, setEditedAmount] = useState('')
   const [editedDueDate, setEditedDueDate] = useState('')
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [newCategoryAmount, setNewCategoryAmount] = useState('')
+  const [newPlanItemAmount, setNewPlanItemAmount] = useState('')
+  const [newPlanItemCategoryId, setNewPlanItemCategoryId] = useState('')
+  const [newPlanItemDueDate, setNewPlanItemDueDate] = useState('')
+  const [allExpenseCategories, setAllExpenseCategories] = useState<any[]>([])
 
   useEffect(() => {
-    loadBudgetData()
+    loadPlanData()
   }, [currentMonth, currentYear])
   
-  const loadBudgetData = async () => {
+  const loadPlanData = async () => {
     try {
       setIsLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
@@ -75,62 +78,66 @@ export default function BudgetsPage() {
       const startDate = new Date(currentYear, currentMonth - 1, 1)
       const endDate = new Date(currentYear, currentMonth, 0)
       
-      // Load all categories with subcategories
-      const { data: categoriesData, error: catError } = await supabase
-        .from('categories')
+      // Load user's expense groups
+      const { data: expenseGroupsData, error: groupError } = await supabase
+        .from('expense_groups')
         .select('*')
-        .order('display_order')
+        .eq('user_id', user.id)
+        .order('sort_order')
       
-      if (catError) throw catError
+      if (groupError) throw groupError
       
-      // Load user's subcategories
-      const { data: subcategoriesData, error: subError } = await supabase
-        .from('subcategories')
-        .select('*')
+      // Load user's expense categories with groups
+      const { data: expenseCategoriesData, error: catError } = await supabase
+        .from('expense_categories')
+        .select('*, expense_group:expense_groups(name)')
         .eq('user_id', user.id)
         .order('name')
       
-      if (subError) throw subError
+      if (catError) throw catError
+      
+      // Store all expense categories for dropdown
+      setAllExpenseCategories(expenseCategoriesData || [])
       
       // Load transactions for the selected month
       const { data: transactionsData, error: transError } = await supabase
         .from('transactions')
-        .select('amount, subcategory_id, transfer_to_account_id')
+        .select('amount, expense_category_id, transfer_to_account_id')
         .eq('user_id', user.id)
         .gte('transaction_date', startDate.toISOString().split('T')[0])
         .lte('transaction_date', endDate.toISOString().split('T')[0])
       
       if (transError) throw transError
       
-      // Calculate actual amounts per subcategory
+      // Calculate actual amounts per expense category
       const actualAmounts: Record<string, number> = {}
       transactionsData?.forEach(t => {
         if (t.transfer_to_account_id) return // Skip transfers
-        if (t.subcategory_id) {
-          actualAmounts[t.subcategory_id] = (actualAmounts[t.subcategory_id] || 0) + Math.abs(parseFloat(t.amount.toString()))
+        if (t.expense_category_id) {
+          actualAmounts[t.expense_category_id] = (actualAmounts[t.expense_category_id] || 0) + Math.abs(parseFloat(t.amount.toString()))
         }
       })
       
-      // Build categories with subcategories
-      const builtCategories: Category[] = (categoriesData || []).map(cat => ({
-        id: cat.id,
-        name: cat.name,
-        type: cat.type as 'income' | 'expense',
-        color: categoryColors[cat.name] || '#6b7280',
-        subcategories: (subcategoriesData || [])
-          .filter(sub => sub.category_id === cat.id)
-          .map(sub => ({
-            id: sub.id,
-            name: sub.name,
-            plannedAmount: 0, // TODO: Load from budgets table when implemented
-            actualAmount: actualAmounts[sub.id] || 0,
-            dueDate: undefined, // TODO: Load from budgets table when implemented
+      // Build expense groups with expense categories
+      const builtCategories: Category[] = (expenseGroupsData || []).map(group => ({
+        id: group.id,
+        name: group.name,
+        type: group.type as 'income' | 'expense',
+        color: categoryColors[group.name] || '#6b7280',
+        subcategories: (expenseCategoriesData || [])
+          .filter(cat => cat.expense_group_id === group.id)
+          .map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            plannedAmount: 0, // TODO: Load from plans table when implemented
+            actualAmount: actualAmounts[cat.id] || 0,
+            dueDate: undefined, // TODO: Load from plans table when implemented
           }))
       }))
       
       setCategories(builtCategories)
     } catch (error) {
-      console.error('Error loading budget data:', error)
+      console.error('Error loading plan data:', error)
     } finally {
       setIsLoading(false)
     }
@@ -189,8 +196,8 @@ export default function BudgetsPage() {
       })
     )
     
-    // TODO: Update the budget item in Supabase
-    console.log('Saving budget item:', {
+    // TODO: Update the plan item in Supabase
+    console.log('Saving plan item:', {
       subcategoryId: editingItem.subcategory.id,
       plannedAmount: newAmount,
       dueDate: editedDueDate || null,
@@ -207,7 +214,7 @@ export default function BudgetsPage() {
     setEditedDueDate('')
   }
 
-  // Calculate chart data - use actual amounts since we don't have planned budgets yet
+  // Calculate chart data - use actual amounts since we don't have planned amounts yet
   const incomeChartData = categories
     .filter(cat => cat.type === 'income')
     .flatMap(cat => 
@@ -238,7 +245,7 @@ export default function BudgetsPage() {
       return
     }
 
-    if (confirm(`Are you sure you want to delete "${editingItem.subcategory.name}" from this month's budget?`)) {
+    if (confirm(`Are you sure you want to delete "${editingItem.subcategory.name}" from this month's plan?`)) {
       setCategories(prevCategories =>
         prevCategories.map(category => {
           if (category.id === editingItem.categoryId) {
@@ -252,7 +259,7 @@ export default function BudgetsPage() {
       )
 
       // TODO: Delete from Supabase
-      console.log('Deleting budget item:', {
+      console.log('Deleting plan item:', {
         categoryId: editingItem.categoryId,
         subcategoryId: editingItem.subcategory.id,
       })
@@ -267,8 +274,8 @@ export default function BudgetsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Monthly Budget</h1>
-            <p className="text-muted-foreground">Loading budget data...</p>
+            <h1 className="text-3xl font-bold tracking-tight">Monthly Plan</h1>
+            <p className="text-muted-foreground">Loading plan data...</p>
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -292,7 +299,7 @@ export default function BudgetsPage() {
     <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Monthly Budget</h1>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Monthly Plan</h1>
           <p className="text-sm text-muted-foreground md:text-base">
             Review your spending for {getMonthName(currentMonth)} {currentYear}
           </p>
@@ -322,14 +329,14 @@ export default function BudgetsPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Copy Budget</DialogTitle>
+                <DialogTitle>Copy Plan</DialogTitle>
                 <DialogDescription>
-                  Copy budget from previous month to get started quickly
+                  Copy plan from previous month to get started quickly
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                <p>This will copy all budget items from the previous month.</p>
-                <Button className="w-full">Copy Budget</Button>
+                <p>This will copy all plan items from the previous month.</p>
+                <Button className="w-full">Copy Plan</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -337,35 +344,33 @@ export default function BudgetsPage() {
             <DialogTrigger asChild>
               <Button className="gap-2" size="sm">
                 <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Add Category</span>
+                <span className="hidden sm:inline">Add Plan Item</span>
                 <span className="sm:hidden">Add</span>
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Custom Category</DialogTitle>
+                <DialogTitle>Add Plan Item</DialogTitle>
                 <DialogDescription>
-                  Create a custom subcategory for your budget
+                  Add a planned amount for an expense category
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="category">Category</Label>
+                  <Label htmlFor="expense-category">Expense Category</Label>
                   <select
-                    id="category"
+                    id="expense-category"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                    value={newPlanItemCategoryId}
+                    onChange={(e) => setNewPlanItemCategoryId(e.target.value)}
                   >
-                    <option>Income</option>
-                    <option>Investments</option>
-                    <option>Savings</option>
-                    <option>Fixed Costs</option>
-                    <option>Guilt-Free Spending</option>
-                    <option>Misc</option>
+                    <option value="">Select a category</option>
+                    {allExpenseCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name} {cat.expense_group?.name && `(${cat.expense_group.name})`}
+                      </option>
+                    ))}
                   </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="name">Subcategory Name</Label>
-                  <Input id="name" placeholder="e.g., Side Project" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="amount">Planned Amount</Label>
@@ -374,17 +379,22 @@ export default function BudgetsPage() {
                       id="amount"
                       type="number"
                       placeholder="0.00"
-                      value={newCategoryAmount}
-                      onChange={(e) => setNewCategoryAmount(e.target.value)}
+                      value={newPlanItemAmount}
+                      onChange={(e) => setNewPlanItemAmount(e.target.value)}
                     />
-                    <Calculator onCalculate={(value) => setNewCategoryAmount(value)} />
+                    <Calculator onCalculate={(value) => setNewPlanItemAmount(value)} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dueDate">Due Date (Optional)</Label>
-                  <Input id="dueDate" type="date" />
+                  <Input 
+                    id="dueDate" 
+                    type="date" 
+                    value={newPlanItemDueDate}
+                    onChange={(e) => setNewPlanItemDueDate(e.target.value)}
+                  />
                 </div>
-                <Button className="w-full">Add Subcategory</Button>
+                <Button className="w-full">Add Plan Item</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -462,7 +472,7 @@ export default function BudgetsPage() {
         </Card>
       </div>
 
-      {/* Budget Categories */}
+      {/* Plan Categories */}
       <div className="space-y-4">
         {categories
           .filter(cat => cat.subcategories.some(sub => sub.actualAmount > 0 || sub.plannedAmount > 0))
@@ -583,13 +593,13 @@ export default function BudgetsPage() {
         )}
       </div>
 
-      {/* Edit Budget Item Dialog */}
+      {/* Edit Plan Item Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
         if (!open) handleCancelEdit()
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Budget Item</DialogTitle>
+            <DialogTitle>Edit Plan Item</DialogTitle>
             <DialogDescription>
               Update the planned amount for {editingItem?.subcategory?.name || 'this item'}
             </DialogDescription>
@@ -631,7 +641,7 @@ export default function BudgetsPage() {
                   className="flex-1" 
                   onClick={handleDeleteItem}
                   disabled={editingItem.subcategory.name === 'Untracked'}
-                  title={editingItem.subcategory.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this budget item'}
+                  title={editingItem.subcategory.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this plan item'}
                 >
                   Delete
                 </Button>

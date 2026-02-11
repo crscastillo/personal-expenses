@@ -74,8 +74,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
    - Institution: Your bank name
    - Balance: Current balance
 
-### Set Up Your First Budget
-1. Go to **Budgets** page
+### Set Up Your First Plan
+1. Go to **Plans** page
 2. It will show the current month
 3. Click on any category to expand subcategories
 4. Click "Add Category" to create custom subcategories
@@ -96,7 +96,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### View Your Dashboard
 1. Go to **Dashboard** (home page)
 2. See your spending overview
-3. View charts showing your budget progress
+3. View charts showing your plan progress
 4. Track your conscious spending percentages
 
 ## Conscious Spending Percentages
@@ -112,9 +112,9 @@ Based on Ramit Sethi's approach, aim for:
 
 ### Monthly Workflow
 1. At the start of each month:
-   - Go to Budgets
+   - Go to Plans
    - Navigate to the new month
-   - Click "Copy from Previous" to quickly set up budget
+   - Click "Copy from Previous" to quickly set up plan
    - Adjust amounts as needed
 
 2. Throughout the month:
@@ -123,7 +123,7 @@ Based on Ramit Sethi's approach, aim for:
    - Get reminders for bills due
 
 3. End of month:
-   - Review spending vs budget
+   - Review spending vs plan
    - Identify areas for adjustment
    - Plan for next month
 
@@ -146,7 +146,7 @@ Based on Ramit Sethi's approach, aim for:
 - Look at browser console for any errors
 
 ### Charts not displaying
-- Make sure you have transactions and budgets created
+- Make sure you have transactions and plans created
 - Check that dates are correct
 - Verify recharts is installed: `npm install recharts`
 
@@ -154,10 +154,10 @@ Based on Ramit Sethi's approach, aim for:
 
 1. Set up authentication if you want multiple users
 2. Add all your accounts (checking, savings, credit cards, cash)
-3. Create your monthly budget based on your income
+3. Create your monthly plan based on your income
 4. Start tracking transactions
 5. Review your conscious spending percentages
-6. Adjust budget as needed to meet your goals
+6. Adjust plan as needed to meet your goals
 
 ## Support
 

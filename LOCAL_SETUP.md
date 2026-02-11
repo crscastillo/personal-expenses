@@ -44,6 +44,20 @@ Here you can:
 - Manage authentication
 - View logs
 
+## Authentication
+
+**Email confirmation is disabled by default** for local development. Users can sign up and immediately access the app without email verification.
+
+Configuration is in `supabase/config.toml`:
+```toml
+[auth.email]
+enable_confirmations = false  # No email needed
+```
+
+To test email flows, access the local email inbox at **http://127.0.0.1:54324**
+
+For more details on authentication configuration, see [AUTH_CONFIGURATION.md](AUTH_CONFIGURATION.md).
+
 ## Connection Details
 
 Your `.env.local` is already configured with:
@@ -80,7 +94,7 @@ supabase/migrations/20260207000000_initial_schema.sql
 ```
 
 This includes:
-- All tables (categories, accounts, budgets, transactions, etc.)
+- All tables (categories, accounts, plans, transactions, etc.)
 - Row Level Security policies
 - Predefined categories and subcategories
 - Helper functions and views

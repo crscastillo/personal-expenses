@@ -59,9 +59,8 @@ export default function TransactionsPage() {
   const [editedDescription, setEditedDescription] = useState('')
   const [editedAmount, setEditedAmount] = useState('')
   const [editedDate, setEditedDate] = useState('')
-  const [editedAccount, setEditedAccount] = useState('')
-  const [editedCategory, setEditedCategory] = useState('')
-  const [editedSubcategory, setEditedSubcategory] = useState('')
+  const [editedAccountId, setEditedAccountId] = useState('')
+  const [editedExpenseCategoryId, setEditedExpenseCategoryId] = useState('')
   const [editedNotes, setEditedNotes] = useState('')
   const [editedReferenceNumber, setEditedReferenceNumber] = useState('')
   const [editedReference, setEditedReference] = useState('')
@@ -119,9 +118,9 @@ export default function TransactionsPage() {
         .select(`
           *,
           account:accounts!transactions_account_id_fkey(name),
-          subcategory:subcategories(
+          expense_category:expense_categories(
             name,
-            category:categories(name)
+            expense_group:expense_groups(name)
           ),
           transfer_account:accounts!transactions_transfer_to_account_id_fkey(name)
         `)
@@ -143,8 +142,8 @@ export default function TransactionsPage() {
         date: t.transaction_date,
         description: t.description,
         amount: parseFloat(t.amount),
-        category: t.transfer_account ? 'Transfer' : (t.subcategory?.category?.name || 'Misc'),
-        subcategory: t.transfer_account ? t.transfer_account.name : (t.subcategory?.name || 'Untracked'),
+        category: t.transfer_account ? 'Transfer' : (t.expense_category?.expense_group?.name || 'Misc'),
+        subcategory: t.transfer_account ? t.transfer_account.name : (t.expense_category?.name || 'Untracked'),
         account: t.account?.name || 'Unknown',
         isPending: t.is_pending || false,
         notes: t.notes,
@@ -177,15 +176,15 @@ export default function TransactionsPage() {
         .eq('is_active', true)
         .order('name')
 
-      // Load subcategories with their categories
-      const { data: subcategoriesData } = await supabase
-        .from('subcategories')
-        .select('*, category:categories(name)')
+      // Load expense categories with their groups
+      const { data: expenseCategoriesData } = await supabase
+        .from('expense_categories')
+        .select('*, group:expense_groups(name)')
         .eq('user_id', user.id)
         .order('name')
 
       setAccounts(accountsData || [])
-      setSubcategories(subcategoriesData || [])
+      setSubcategories(expenseCategoriesData || [])
     } catch (error) {
       console.error('Error loading accounts and subcategories:', error)
     }
@@ -216,7 +215,7 @@ export default function TransactionsPage() {
         const transactionData = {
           user_id: user.id,
           account_id: newAccountId,
-          subcategory_id: newSubcategoryId,
+          expense_category_id: newSubcategoryId,
           amount: parseFloat(newAmount),
           description: newDescription,
           transaction_date: newDate,
@@ -340,17 +339,31 @@ export default function TransactionsPage() {
       return sortDirection === 'asc' ? comparison : -comparison
     })
 
-  const handleEditTransaction = (transaction: any) => {
+  const handleEditTransaction = async (transaction: any) => {
     setEditingTransaction(transaction)
     setEditedDescription(transaction.description)
     setEditedAmount(Math.abs(transaction.amount).toString())
     setEditedDate(transaction.date)
-    setEditedAccount(transaction.account)
-    setEditedCategory(transaction.category)
-    setEditedSubcategory(transaction.subcategory)
     setEditedNotes(transaction.notes || '')
     setEditedReferenceNumber(transaction.referenceNumber || '')
     setEditedReference(transaction.reference || '')
+    
+    // Load the actual transaction to get IDs
+    try {
+      const { data: transData } = await supabase
+        .from('transactions')
+        .select('account_id, expense_category_id')
+        .eq('id', transaction.id)
+        .single()
+      
+      if (transData) {
+        setEditedAccountId(transData.account_id || '')
+        setEditedExpenseCategoryId(transData.expense_category_id || '')
+      }
+    } catch (error) {
+      console.error('Error loading transaction details:', error)
+    }
+    
     setIsEditDialogOpen(true)
   }
 
@@ -364,12 +377,22 @@ export default function TransactionsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // Determine if this is income or expense based on the category
+      let finalAmount = amount
+      if (editedExpenseCategoryId) {
+        const category = subcategories.find(c => c.id === editedExpenseCategoryId)
+        const isIncome = category?.group?.name === 'Income'
+        finalAmount = isIncome ? amount : -amount
+      }
+
       // Update the transaction in Supabase
       const { error } = await supabase
         .from('transactions')
         .update({
           description: editedDescription,
-          amount: editedCategory === 'Income' ? amount : -amount,
+          account_id: editedAccountId,
+          expense_category_id: editedExpenseCategoryId || null,
+          amount: finalAmount,
           transaction_date: editedDate,
           notes: editedNotes || null,
           reference_number: editedReferenceNumber || null,
@@ -379,26 +402,8 @@ export default function TransactionsPage() {
 
       if (error) throw error
 
-      // Update local state
-      setTransactions(prevTransactions =>
-        prevTransactions.map(t => {
-          if (t.id === editingTransaction.id) {
-            return {
-              ...t,
-              description: editedDescription,
-              amount: editedCategory === 'Income' ? amount : -amount,
-              date: editedDate,
-              account: editedAccount,
-              category: editedCategory,
-              subcategory: editedSubcategory,
-              notes: editedNotes,
-              referenceNumber: editedReferenceNumber,
-              reference: editedReference,
-            }
-          }
-          return t
-        })
-      )
+      // Reload transactions to get fresh data
+      await loadTransactions()
       
       setIsEditDialogOpen(false)
       setEditingTransaction(null)
@@ -470,9 +475,8 @@ export default function TransactionsPage() {
     setEditedDescription('')
     setEditedAmount('')
     setEditedDate('')
-    setEditedAccount('')
-    setEditedCategory('')
-    setEditedSubcategory('')
+    setEditedAccountId('')
+    setEditedExpenseCategoryId('')
     setEditedNotes('')
     setEditedReferenceNumber('')
     setEditedReference('')
@@ -778,7 +782,7 @@ export default function TransactionsPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="new-subcategory">Subcategory</Label>
+                  <Label htmlFor="new-subcategory">Expense Category</Label>
                   <select
                     id="new-subcategory"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
@@ -792,7 +796,7 @@ export default function TransactionsPage() {
                     <option value="">None (for transfers)</option>
                     {subcategories.map((sub) => (
                       <option key={sub.id} value={sub.id}>
-                        {sub.category?.name} → {sub.name}
+                        {sub.name} {sub.group?.name && `(${sub.group.name})`}
                       </option>
                     ))}
                   </select>
@@ -1045,45 +1049,31 @@ export default function TransactionsPage() {
                 <select
                   id="edit-account"
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                  value={editedAccount}
-                  onChange={(e) => setEditedAccount(e.target.value)}
+                  value={editedAccountId}
+                  onChange={(e) => setEditedAccountId(e.target.value)}
                 >
-                  <option>Chase Checking</option>
-                  <option>Ally Savings</option>
-                  <option>Chase Sapphire Reserve</option>
-                  <option>Cash</option>
+                  <option value="">Select an account</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-category">Category</Label>
+                <Label htmlFor="edit-expense-category">Expense Category</Label>
                 <select
-                  id="edit-category"
+                  id="edit-expense-category"
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                  value={editedCategory}
-                  onChange={(e) => setEditedCategory(e.target.value)}
+                  value={editedExpenseCategoryId}
+                  onChange={(e) => setEditedExpenseCategoryId(e.target.value)}
                 >
-                  <option>Income</option>
-                  <option>Investments</option>
-                  <option>Savings</option>
-                  <option>Fixed Costs</option>
-                  <option>Guilt-Free Spending</option>
-                  <option>Misc</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-subcategory">Subcategory</Label>
-                <select
-                  id="edit-subcategory"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                  value={editedSubcategory}
-                  onChange={(e) => setEditedSubcategory(e.target.value)}
-                >
-                  <option>Groceries</option>
-                  <option>Dining Out</option>
-                  <option>Utilities</option>
-                  <option>Salary</option>
-                  <option>Freelance</option>
-                  <option>Untracked</option>
+                  <option value="">Select a category</option>
+                  {subcategories.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name} {sub.group?.name && `(${sub.group.name})`}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="space-y-2">

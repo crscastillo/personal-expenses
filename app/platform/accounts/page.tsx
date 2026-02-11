@@ -30,7 +30,7 @@ interface Account {
   balance: number
   color: string
   is_active: boolean
-  include_in_budget: boolean
+  include_in_plan: boolean
 }
 
 const accountTypeIcons: Record<AccountType, any> = {
@@ -177,7 +177,7 @@ export default function AccountsPage() {
           balance,
           color: newColor,
           is_active: true,
-          include_in_budget: true,
+          include_in_plan: true,
         }])
         .select()
         .single()
@@ -188,22 +188,22 @@ export default function AccountsPage() {
 
       // If there's an initial balance, create an initial transaction
       if (balance !== 0) {
-        // Get "Untracked" subcategory for initial balance
-        const { data: subcategories } = await supabase
-          .from('subcategories')
+        // Get "Untracked" expense category for initial balance
+        const { data: expenseCategory } = await supabase
+          .from('expense_categories')
           .select('id')
           .eq('user_id', user.id)
           .eq('name', 'Untracked')
           .limit(1)
           .single()
 
-        if (subcategories) {
+        if (expenseCategory) {
           await supabase
             .from('transactions')
             .insert({
               user_id: user.id,
               account_id: accountData.id,
-              subcategory_id: subcategories.id,
+              expense_category_id: expenseCategory.id,
               amount: balance,
               description: 'Initial Balance',
               transaction_date: new Date().toISOString().split('T')[0],

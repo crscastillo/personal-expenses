@@ -83,9 +83,9 @@ export default function DashboardPage() {
         .select(`
           amount,
           transaction_date,
-          subcategory:subcategories(
+          expense_category:expense_categories(
             name,
-            category:categories(name)
+            expense_group:expense_groups(name)
           ),
           transfer_account:accounts!transactions_transfer_to_account_id_fkey(name)
         `)
@@ -97,8 +97,8 @@ export default function DashboardPage() {
       
       const transformedTransactions = (data || []).map((t: any) => ({
         amount: parseFloat(t.amount),
-        category: t.transfer_account ? 'Transfer' : (t.subcategory?.category?.name || 'Misc'),
-        subcategory: t.transfer_account ? t.transfer_account.name : (t.subcategory?.name || 'Untracked'),
+        category: t.transfer_account ? 'Transfer' : (t.expense_category?.expense_group?.name || 'Misc'),
+        subcategory: t.transfer_account ? t.transfer_account.name : (t.expense_category?.name || 'Untracked'),
         transaction_date: t.transaction_date,
       }))
       
@@ -180,7 +180,7 @@ export default function DashboardPage() {
       breakdown[category] = Object.entries(subs).map(([name, actual]) => ({
         name,
         actual,
-        planned: 0 // We don't have budget data yet, leaving as 0
+        planned: 0 // We don't have plan data yet, leaving as 0
       }))
     })
     setCategoryBreakdown(breakdown)
@@ -429,7 +429,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Budget Progress */}
+      {/* Plan Progress */}
       <Card>
         <CardHeader>
           <CardTitle>Spending by Category</CardTitle>

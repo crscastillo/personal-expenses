@@ -4,29 +4,29 @@
 
 The system now distinguishes between **income** and **expense** categories using a `type` field in the database.
 
-## Account Budget Tracking
+## Account Tracking for Planning
 
-Accounts have an `include_in_budget` flag to distinguish between:
-- **Budget-tracked accounts** (`include_in_budget = true`): Checking, credit cards, cash - used for daily spending
-- **Savings/Investment accounts** (`include_in_budget = false`): Excluded from budget calculations
+Accounts have an `include_in_plan` flag to distinguish between:
+- **Plan-tracked accounts** (`include_in_plan = true`): Checking, credit cards, cash - used for daily spending
+- **Savings/Investment accounts** (`include_in_plan = false`): Excluded from plan calculations
 
 ### Why This Matters
 
 When you transfer $500 to your savings account:
 - It's tracked as an "expense" in your Savings subcategory
-- Money leaves your checking account (budget-tracked)
-- Money enters your savings account (NOT budget-tracked)
+- Money leaves your checking account (plan-tracked)
+- Money enters your savings account (NOT plan-tracked)
 - Your net worth stays the same
-- Your available budget decreases (which is correct!)
+- Your available funds for planning decreases (which is correct!)
 
-This prevents double-counting and accurately reflects that you've allocated money away from your spending budget.
+This prevents double-counting and accurately reflects that you've allocated money away from your spending plan.
 
 ### Database Schema
 
 The `categories` table now includes a `type` field:
 
 ```sql
-CREATE TABLE pex.categories (
+CREATE TABLE public.categories (
   id UUID PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   description TEXT,
@@ -92,7 +92,7 @@ const effectiveAmount = category.type === 'income'
   : -transaction.amount // Negative for expenses
 ```
 
-### 3. **Budget Calculations**
+### 3. **Plan Calculations**
 
 ```typescript
 // Calculate net cash flow
@@ -160,16 +160,16 @@ function findBestMatchingSubcategory(
 3. **Auto-categorize** using keyword matching
 4. **Store transaction** with absolute amount value
 5. **Flag unmatched** transactions for manual categorization
-6. **Calculate budget** using category types
+### 6. **Calculate Plan** using category types
 
 ## Query Examples
 
 ### Get All Income
 ```sql
 SELECT t.*, s.name as subcategory, c.name as category
-FROM pex.transactions t
-JOIN pex.subcategories s ON t.subcategory_id = s.id
-JOIN pex.categories c ON s.category_id = c.id
+FROM public.transactions t
+JOIN public.subcategories s ON t.subcategory_id = s.id
+JOIN public.categories c ON s.category_id = c.id
 WHERE c.type = 'income'
 AND t.transaction_date >= '2026-02-01'
 AND t.transaction_date < '2026-03-01';
@@ -178,9 +178,9 @@ AND t.transaction_date < '2026-03-01';
 ### Get All Expenses
 ```sql
 SELECT t.*, s.name as subcategory, c.name as category
-FROM pex.transactions t
-JOIN pex.subcategories s ON t.subcategory_id = s.id
-JOIN pex.categories c ON s.category_id = c.id
+FROM public.transactions t
+JOIN public.subcategories s ON t.subcategory_id = s.id
+JOIN public.categories c ON s.category_id = c.id
 WHERE c.type = 'expense'
 AND t.transaction_date >= '2026-02-01'
 AND t.transaction_date < '2026-03-01';
@@ -191,9 +191,9 @@ AND t.transaction_date < '2026-03-01';
 SELECT 
   c.type,
   SUM(t.amount) as total
-FROM pex.transactions t
-JOIN pex.subcategories s ON t.subcategory_id = s.id
-JOIN pex.categories c ON s.category_id = c.id
+FROM public.transactions t
+JOIN public.subcategories s ON t.subcategory_id = s.id
+JOIN public.categories c ON s.category_id = c.id
 WHERE t.transaction_date >= '2026-02-01'
 AND t.transaction_date < '2026-03-01'
 GROUP BY c.type;
@@ -202,7 +202,7 @@ GROUP BY c.type;
 ## Benefits
 
 ✅ **Automatic categorization** - System knows if money is coming in or going out  
-✅ **Accurate budgeting** - Income adds, expenses subtract  
+✅ **Accurate planning** - Income adds, expenses subtract  
 ✅ **Clear reporting** - Easy to calculate net cash flow  
 ✅ **Import friendly** - Works seamlessly with bank CSV imports  
 ✅ **Flexible matching** - Can use keywords, ML, or user rules to categorize
@@ -211,28 +211,28 @@ GROUP BY c.type;
 
 ## Account Setup & Transfer Handling
 
-### Account Types and Budget Inclusion
+### Account Types and Planning Inclusion
 
-The `accounts` table includes an `include_in_budget` field:
+The `accounts` table includes an `include_in_plan` field:
 
 ```sql
-CREATE TABLE pex.accounts (
+CREATE TABLE public.accounts (
   id UUID PRIMARY KEY,
   user_id UUID,
   name TEXT NOT NULL,
   type TEXT CHECK (type IN ('checking', 'savings', 'credit_card', 'cash', 'investment')),
   balance DECIMAL(12, 2),
-  include_in_budget BOOLEAN DEFAULT true,
+  include_in_plan BOOLEAN DEFAULT true,
   -- ... other fields
 );
 ```
 
 ### Recommended Account Setup
 
-| Account Type | `include_in_budget` | Purpose | Example |
+| Account Type | `include_in_plan` | Purpose | Example |
 |-------------|-------------------|---------|---------|
 | Checking | `true` | Daily spending, bills | Chase Checking |
-| Credit Card | `true` | Purchases tracked in budget | Amex Gold |
+| Credit Card | `true` | Purchases tracked in plan | Amex Gold |
 | Cash | `true` | Cash transactions | Wallet |
 | Savings | `false` | Emergency fund, goals | Ally Savings |
 | Investment | `false` | 401(k), IRA, Brokerage | Vanguard 401(k) |
@@ -261,65 +261,65 @@ When you move money from checking → savings:
 }
 ```
 
-### Budget Calculations
+### Plan Calculations
 
-Only transactions from accounts with `include_in_budget = true` are counted:
+Only transactions from accounts with `include_in_plan = true` are counted:
 
 ```sql
--- Get budget vs actual for a month
+-- Get plan vs actual for a month
 SELECT 
   c.name as category,
   s.name as subcategory,
-  bi.planned_amount,
+  pi.planned_amount,
   COALESCE(SUM(t.amount), 0) as actual_amount
-FROM pex.budget_items bi
-JOIN pex.subcategories s ON bi.subcategory_id = s.id
-JOIN pex.categories c ON s.category_id = c.id
-LEFT JOIN pex.transactions t ON t.subcategory_id = s.id 
+FROM public.plan_items pi
+JOIN public.subcategories s ON pi.subcategory_id = s.id
+JOIN public.categories c ON s.category_id = c.id
+LEFT JOIN public.transactions t ON t.subcategory_id = s.id 
   AND DATE_TRUNC('month', t.transaction_date) = '2026-02-01'
   AND t.account_id IN (
-    SELECT id FROM pex.accounts 
+    SELECT id FROM public.accounts 
     WHERE user_id = $1 
-    AND include_in_budget = true
+    AND include_in_plan = true
   )
-WHERE bi.budget_id = $2
-GROUP BY c.name, s.name, bi.planned_amount;
+WHERE pi.plan_id = $2
+GROUP BY c.name, s.name, pi.planned_amount;
 ```
 
 ### Dashboard Calculations
 
-#### Budget Tracking (Checking + Credit Cards + Cash)
+#### Plan Tracking (Checking + Credit Cards + Cash)
 ```sql
--- Only accounts with include_in_budget = true
+-- Only accounts with include_in_plan = true
 SELECT 
   SUM(CASE WHEN c.type = 'income' THEN t.amount ELSE 0 END) as total_income,
   SUM(CASE WHEN c.type = 'expense' THEN t.amount ELSE 0 END) as total_expenses
-FROM pex.transactions t
-JOIN pex.accounts a ON t.account_id = a.id
-JOIN pex.subcategories s ON t.subcategory_id = s.id
-JOIN pex.categories c ON s.category_id = c.id
+FROM public.transactions t
+JOIN public.accounts a ON t.account_id = a.id
+JOIN public.subcategories s ON t.subcategory_id = s.id
+JOIN public.categories c ON s.category_id = c.id
 WHERE a.user_id = $1
-  AND a.include_in_budget = true
+  AND a.include_in_plan = true
   AND t.transaction_date >= '2026-02-01'
   AND t.transaction_date < '2026-03-01';
 ```
 
 #### Net Worth (All Accounts)
 ```sql
--- Include all accounts regardless of include_in_budget
+-- Include all accounts regardless of include_in_plan
 SELECT SUM(balance) as net_worth
-FROM pex.accounts
+FROM public.accounts
 WHERE user_id = $1 AND is_active = true;
 ```
 
 ### Example Scenario
 
 **Accounts:**
-- Chase Checking: $3,000 (`include_in_budget = true`)
-- Ally Savings: $10,000 (`include_in_budget = false`)
-- Vanguard 401(k): $50,000 (`include_in_budget = false`)
+- Chase Checking: $3,000 (`include_in_plan = true`)
+- Ally Savings: $10,000 (`include_in_plan = false`)
+- Vanguard 401(k): $50,000 (`include_in_plan = false`)
 
-**February Budget:**
+**February Plan:**
 - Income: Salary = $5,000 (planned)
 - Expenses:
   - Emergency Fund = $500 (planned)
@@ -342,14 +342,14 @@ date,description,amount,account
 3. Transfer → Categorized as "Emergency Fund" (Savings) ← This is the key!
 4. Groceries → Categorized as "Groceries" (Fixed Costs)
 
-**Budget Dashboard Shows:**
-- Available to budget: $5,000 (income)
+**Plan Dashboard Shows:**
+- Available to plan: $5,000 (income)
 - Allocated: $2,125.50 (rent + transfer + groceries)
 - Remaining: $2,874.50
 
 **Accounts Page Shows:**
-- Chase Checking: $2,874.50 (included in budget)
-- Ally Savings: $10,500.00 (excluded from budget, but shown for net worth)
+- Chase Checking: $2,874.50 (included in planning)
+- Ally Savings: $10,500.00 (excluded from planning, but shown for net worth)
 - Total Net Worth: $63,374.50
 
 ### Integration Tips
@@ -357,29 +357,29 @@ date,description,amount,account
 #### 1. **When Creating Accounts**
 ```typescript
 async function createAccount(data: AccountInput) {
-  // Auto-set include_in_budget based on account type
-  const includeInBudget = data.type === 'checking' || 
-                          data.type === 'credit_card' || 
-                          data.type === 'cash'
+  // Auto-set include_in_plan based on account type
+  const includeInPlan = data.type === 'checking' || 
+                       data.type === 'credit_card' || 
+                       data.type === 'cash'
   
-  return await supabase.from('accounts').insert({
+  await supabase.from('accounts').insert({
     ...data,
-    include_in_budget: includeInBudget
+    include_in_plan: includeInPlan
   })
 }
 ```
 
 #### 2. **When Importing Transactions**
 ```typescript
-// Check if the account is budget-tracked
+// Check if the account is plan-tracked
 const account = await getAccount(transaction.account_id)
 
-if (account.include_in_budget) {
-  // This transaction affects the budget
+if (account.include_in_plan) {
+  // This transaction affects the plan
   await matchToSubcategory(transaction)
 } else {
   // This is a savings/investment account
-  // Optionally track for net worth, but don't affect budget
+  // Optionally track for net worth, but don't affect plan
   transaction.subcategory_id = null // or a special "Transfer In" category
 }
 ```
@@ -410,9 +410,9 @@ orize(transaction)
 
 ## Summary
 
-✅ **Budget accounts** (checking, credit card, cash) → `include_in_budget = true`  
-✅ **Savings/Investment accounts** → `include_in_budget = false`  
+✅ **Tracked accounts** (checking, credit card, cash) → `include_in_plan = true`  
+✅ **Savings/Investment accounts** → `include_in_plan = false`  
 ✅ **Transfers** are categorized as expenses under Savings/Investments categories  
-✅ **Dashboard** only shows budget account transactions  
+✅ **Dashboard** only shows tracked account transactions  
 ✅ **Net worth** includes all accounts  
 ✅ **No double-counting** of transfers

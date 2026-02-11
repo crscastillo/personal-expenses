@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { seedDefaultCategories, seedTestData } from '@/lib/seed-data'
+import { seedDefaultExpenseGroups, seedDefaultPlanItems, seedTestData } from '@/lib/seed-data'
 import { Checkbox } from '@/components/ui/checkbox'
 
 export default function SignupPage() {
@@ -55,12 +55,20 @@ export default function SignupPage() {
         const { data: { user } } = await supabase.auth.getUser()
         
         if (user) {
-          setSetupMessage('Setting up categories...')
-          const { categoryMap } = await seedDefaultCategories(user.id)
+          setSetupMessage('Setting up expense groups and categories...')
+          const { expenseGroups, categoryMap } = await seedDefaultExpenseGroups(user.id)
+          console.log('Created expense groups:', expenseGroups?.length || 0)
+          console.log('Created expense categories:', Object.keys(categoryMap).length)
+          
+          setSetupMessage('Creating plan items...')
+          const { planItemsCount } = await seedDefaultPlanItems(user.id, categoryMap)
+          console.log('Created plan items:', planItemsCount)
           
           if (createTestData) {
-            setSetupMessage('Creating test data...')
-            await seedTestData(user.id, categoryMap)
+            setSetupMessage('Creating test accounts and transactions...')
+            const { accounts, transactionCount } = await seedTestData(user.id, categoryMap)
+            console.log('Created test accounts:', accounts?.length || 0)
+            console.log('Created test transactions:', transactionCount)
           }
         }
         
@@ -70,7 +78,7 @@ export default function SignupPage() {
         
         // Auto-redirect after successful signup
         setTimeout(() => {
-          router.push('/app')
+          router.push('/platform')
         }, 2000)
       } catch (seedError) {
         console.error('Error seeding data:', seedError)
@@ -79,7 +87,7 @@ export default function SignupPage() {
         setSetupMessage('Account created! Redirecting...')
         setLoading(false)
         setTimeout(() => {
-          router.push('/app')
+          router.push('/platform')
         }, 2000)
       }
     }

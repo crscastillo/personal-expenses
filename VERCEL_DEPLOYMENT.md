@@ -147,6 +147,12 @@ Update your Supabase project's authentication settings:
    https://your-app.vercel.app/**
    ```
 
+4. Go to **Authentication** → **Settings**
+5. Set **JWT expiry limit** to `1800` seconds (30 minutes)
+6. Under **Session timeouts** (if available):
+   - **Timebox**: Set to 30 minutes
+   - **Inactivity timeout**: Set to 30 minutes
+
 ## Step 6: Test Your Deployment
 
 1. Visit your Vercel URL

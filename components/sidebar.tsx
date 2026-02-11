@@ -2,17 +2,18 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Wallet, CreditCard, Settings, PiggyBank, FolderTree, X } from 'lucide-react'
+import { LayoutDashboard, Wallet, CreditCard, Settings, PiggyBank, FolderTree, X, Tags } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 const navigation = [
-  { name: 'Dashboard', href: '/app', icon: LayoutDashboard },
-  { name: 'Budgets', href: '/app/budgets', icon: PiggyBank },
-  { name: 'Accounts', href: '/app/accounts', icon: Wallet },
-  { name: 'Transactions', href: '/app/transactions', icon: CreditCard },
-  { name: 'Categories', href: '/app/categories', icon: FolderTree },
-  { name: 'Settings', href: '/app/settings', icon: Settings },
+  { name: 'Dashboard', href: '/platform', icon: LayoutDashboard },
+  { name: 'Plans', href: '/platform/plans', icon: PiggyBank },
+  { name: 'Accounts', href: '/platform/accounts', icon: Wallet },
+  { name: 'Transactions', href: '/platform/transactions', icon: CreditCard },
+  { name: 'Expense Groups', href: '/platform/expense-groups', icon: FolderTree },
+  { name: 'Expense Categories', href: '/platform/expense-categories', icon: Tags },
+  { name: 'Settings', href: '/platform/settings', icon: Settings },
 ]
 
 interface SidebarProps {
