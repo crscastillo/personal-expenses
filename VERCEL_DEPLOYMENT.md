@@ -42,7 +42,7 @@ You need to run your migrations on the production database **before your first d
 ### Option B: Run Migration Manually
 
 1. Go to **SQL Editor** in your Supabase dashboard
-2. Copy the contents of `supabase/migrations/20260207000000_initial_schema.sql`
+2. Copy the contents of `supabase/migrations/20260211000000_initial_schema.sql`
 3. Paste and run it in the SQL Editor
 
 ### Migration Validation During Builds

@@ -90,7 +90,7 @@ npm run supabase:status
 
 Your database schema is automatically applied from:
 ```
-supabase/migrations/20260207000000_initial_schema.sql
+supabase/migrations/20260211000000_initial_schema.sql
 ```
 
 This includes:
@@ -179,7 +179,7 @@ If you later want to use cloud Supabase instead:
 3. Run the migration in the cloud SQL Editor:
    ```bash
    # Copy the migration file contents
-   cat supabase/migrations/20260207000000_initial_schema.sql
+   cat supabase/migrations/20260211000000_initial_schema.sql
    ```
 4. Paste and run in Supabase Cloud SQL Editor
 

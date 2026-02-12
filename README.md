@@ -123,7 +123,7 @@ If you prefer using cloud Supabase instead:
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
    ```
 3. Go to SQL Editor in Supabase dashboard
-4. Run the migration from `supabase/migrations/20260207000000_initial_schema.sql`
+4. Run the migration from `supabase/migrations/20260211000000_initial_schema.sql`
 5. Start the app: `npm run dev`
 
 ## Project Structure
