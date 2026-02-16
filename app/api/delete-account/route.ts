@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 export async function DELETE() {
@@ -15,29 +16,77 @@ export async function DELETE() {
       )
     }
 
-    // Delete user-specific data (subcategories will cascade from user deletion)
-    // The database schema has ON DELETE CASCADE for all user relations
-    // So deleting from auth.users will automatically clean up all related tables
-    
-    // Sign out the user first
-    const { error: signOutError } = await supabase.auth.signOut()
-    
-    if (signOutError) {
-      console.error('Error signing out:', signOutError)
+    const userId = user.id
+    console.log('[DELETE ACCOUNT] Starting account deletion for user:', userId)
+
+    try {
+      // Delete all user data explicitly (though CASCADE will handle it)
+      // This is more explicit and gives us better logging
+      console.log('[DELETE ACCOUNT] Deleting user reminders...')
+      await supabase.from('reminders').delete().eq('user_id', userId)
+
+      console.log('[DELETE ACCOUNT] Deleting user transactions...')
+      await supabase.from('transactions').delete().eq('user_id', userId)
+      
+      console.log('[DELETE ACCOUNT] Deleting user monthly plans (with plan items)...')
+      await supabase.from('monthly_plans').delete().eq('user_id', userId)
+      
+      console.log('[DELETE ACCOUNT] Deleting user accounts...')
+      await supabase.from('accounts').delete().eq('user_id', userId)
+      
+      console.log('[DELETE ACCOUNT] Deleting user expense categories...')
+      await supabase.from('expense_categories').delete().eq('user_id', userId)
+      
+      console.log('[DELETE ACCOUNT] Deleting user expense groups...')
+      await supabase.from('expense_groups').delete().eq('user_id', userId)
+
+      console.log('[DELETE ACCOUNT] All user data deleted successfully')
+    } catch (dataError) {
+      console.error('[DELETE ACCOUNT] Error deleting user data:', dataError)
+      // Continue anyway - the CASCADE will clean up when we delete the auth user
     }
 
-    // Note: Actual user deletion from auth.users requires admin privileges
-    // This needs to be done via Supabase Dashboard or with service role key
-    // The client-side code will handle the UI flow and data cleanup
+    // Use admin client to delete the auth user
+    // This requires SUPABASE_SERVICE_ROLE_KEY environment variable
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.log('[DELETE ACCOUNT] Deleting auth user with admin client...')
+      const adminClient = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+      )
+
+      const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId)
+      
+      if (deleteError) {
+        console.error('[DELETE ACCOUNT] Error deleting auth user:', deleteError)
+        return NextResponse.json(
+          { error: 'Failed to delete user account', details: deleteError.message },
+          { status: 500 }
+        )
+      }
+
+      console.log('[DELETE ACCOUNT] Auth user deleted successfully')
+    } else {
+      console.error('[DELETE ACCOUNT] SUPABASE_SERVICE_ROLE_KEY not configured')
+      // Sign out the user at least
+      await supabase.auth.signOut()
+      return NextResponse.json(
+        { error: 'Service role key not configured. Please delete your account from Supabase dashboard.' },
+        { status: 500 }
+      )
+    }
+
+    // Sign out the user
+    await supabase.auth.signOut()
     
     return NextResponse.json(
-      { message: 'Account deletion initiated' },
+      { message: 'Account deleted successfully' },
       { status: 200 }
     )
-  } catch (error) {
-    console.error('Error in delete-account API:', error)
+  } catch (error: any) {
+    console.error('[DELETE ACCOUNT] Error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error.message },
       { status: 500 }
     )
   }
