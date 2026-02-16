@@ -52,6 +52,9 @@ export type PlanItem = {
   planned_amount: number
   due_date: string | null
   notes: string | null
+  tracking_mode: 'automatic' | 'manual'
+  completed_amount: number
+  is_completed: boolean
   created_at: string
   updated_at: string
 }

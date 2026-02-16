@@ -65,6 +65,7 @@ if (!connectionString && PROJECT_REF && DB_PASSWORD) {
 }
 
 // Read migration file
+
 const migrationPath = path.join(__dirname, '../supabase/migrations/20260211000000_initial_schema.sql');
 
 if (!fs.existsSync(migrationPath)) {

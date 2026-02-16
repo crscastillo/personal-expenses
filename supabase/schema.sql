@@ -90,6 +90,9 @@ CREATE TABLE public.plan_items (
   planned_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
   due_date DATE,
   notes TEXT,
+  tracking_mode TEXT NOT NULL DEFAULT 'automatic' CHECK (tracking_mode IN ('automatic', 'manual')),
+  completed_amount DECIMAL(12, 2) DEFAULT 0,
+  is_completed BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   CONSTRAINT unique_plan_item UNIQUE(plan_id, expense_category_id)
@@ -98,6 +101,9 @@ CREATE TABLE public.plan_items (
 COMMENT ON TABLE public.plan_items IS 'Individual line items within monthly plans';
 COMMENT ON COLUMN public.plan_items.plan_id IS 'References monthly_plans table';
 COMMENT ON COLUMN public.plan_items.expense_category_id IS 'References expense_categories table';
+COMMENT ON COLUMN public.plan_items.tracking_mode IS 'automatic: track via transaction categories, manual: manually check off as done';
+COMMENT ON COLUMN public.plan_items.completed_amount IS 'For manual tracking: amount marked as completed';
+COMMENT ON COLUMN public.plan_items.is_completed IS 'For manual tracking: whether item is fully completed';
 
 -- ======================
 -- TRANSACTIONS

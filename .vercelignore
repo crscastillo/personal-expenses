@@ -1,0 +1,9 @@
+# Backup migration files - not needed in production
+supabase/migrations/backup
+
+# Local Supabase files
+.supabase
+
+# Development files
+*.log
+.DS_Store
