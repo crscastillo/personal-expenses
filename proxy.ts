@@ -49,5 +49,6 @@ export const config = {
     '/platform/:path*',
     '/login',
     '/signup',
+    '/api/:path*',
   ],
 }

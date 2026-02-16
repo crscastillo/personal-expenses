@@ -7,17 +7,26 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (authError) {
+      console.error('[API /expense-groups GET] Auth error:', authError)
+      return NextResponse.json({ error: 'Authentication failed', details: authError.message }, { status: 401 })
     }
+
+    if (!user) {
+      console.error('[API /expense-groups GET] No user found in session')
+      return NextResponse.json({ error: 'No authenticated user' }, { status: 401 })
+    }
+
+    console.log('[API /expense-groups GET] Loading groups for user:', user.id)
 
     const expenseGroupService = new ExpenseGroupService(supabase)
     const groups = await expenseGroupService.getExpenseGroups(user.id)
 
+    console.log('[API /expense-groups GET] Successfully loaded', groups.length, 'groups')
     return NextResponse.json(groups)
   } catch (error: any) {
-    console.error('Error fetching expense groups:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('[API /expense-groups GET] Error:', error)
+    return NextResponse.json({ error: 'Failed to fetch expense groups', details: error.message }, { status: 500 })
   }
 }
 

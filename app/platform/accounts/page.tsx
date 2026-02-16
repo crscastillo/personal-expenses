@@ -93,23 +93,29 @@ export default function AccountsPage() {
     try {
       setIsLoading(true)
       
+      console.log('[Accounts Page] Fetching accounts from API...')
       const response = await fetch('/api/accounts')
+      
+      console.log('[Accounts Page] API response status:', response.status)
       
       if (!response.ok) {
         if (response.status === 401) {
-          console.log('No authenticated user found')
+          console.log('[Accounts Page] Unauthorized - user not authenticated')
           setAccountsList([])
           setIsLoading(false)
           return
         }
-        throw new Error(`Failed to load accounts: ${response.statusText}`)
+        const errorData = await response.json()
+        console.error('[Accounts Page] API error:', errorData)
+        throw new Error(errorData.details || errorData.error || `Failed to load accounts: ${response.statusText}`)
       }
 
       const accounts = await response.json()
-      console.log('Loaded accounts:', accounts.length)
+      console.log('[Accounts Page] Successfully loaded', accounts.length, 'accounts')
       setAccountsList(accounts)
     } catch (error: any) {
-      console.error('Error loading accounts:', error)
+      console.error('[Accounts Page] Error loading accounts:', error)
+      alert(`Failed to load accounts: ${error.message}`)
       setAccountsList([])
     } finally {
       setIsLoading(false)
