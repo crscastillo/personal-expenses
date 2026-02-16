@@ -36,8 +36,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Redirect to app if authenticated and trying to access auth pages
-  if ((request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup') && user) {
+  // Redirect to app if authenticated and trying to access auth pages (except reset-password which requires auth)
+  if ((request.nextUrl.pathname === '/login' || 
+       request.nextUrl.pathname === '/signup' ||
+       request.nextUrl.pathname === '/forgot-password') && user) {
     return NextResponse.redirect(new URL('/platform', request.url))
   }
 
@@ -49,6 +51,8 @@ export const config = {
     '/platform/:path*',
     '/login',
     '/signup',
+    '/forgot-password',
+    '/reset-password',
     '/api/:path*',
   ],
 }
