@@ -16,6 +16,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -42,6 +52,7 @@ export default function TransactionsPage() {
   const [selectedAccount, setSelectedAccount] = useState(accountFilter || 'all')
   const [sortColumn, setSortColumn] = useState<'date' | 'description' | 'category' | 'account' | 'amount'>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [isLargeScreen, setIsLargeScreen] = useState(false)
   
   // Add transaction form state
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -77,6 +88,16 @@ export default function TransactionsPage() {
   const [previewTransactions, setPreviewTransactions] = useState<any[]>([])
   const [dateFormat, setDateFormat] = useState<'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD'>('MM/DD/YYYY')
   const [qifFileContent, setQifFileContent] = useState<string>('')
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsLargeScreen(window.innerWidth >= 1024) // lg breakpoint
+    }
+    
+    checkScreenSize()
+    window.addEventListener('resize', checkScreenSize)
+    return () => window.removeEventListener('resize', checkScreenSize)
+  }, [])
 
   // Load transactions, accounts, and subcategories from Supabase
   useEffect(() => {
@@ -726,150 +747,305 @@ export default function TransactionsPage() {
               <span className="sm:hidden">Import</span>
             </Button>
           </div>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add Transaction
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Add Transaction</DialogTitle>
-                <DialogDescription>
-                  Manually add a transaction to any account
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-description">Description *</Label>
-                  <Input 
-                    id="new-description" 
-                    placeholder="e.g., Coffee at Starbucks"
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-amount">Amount *</Label>
-                  <Input
-                    id="new-amount"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={newAmount}
-                    onChange={(e) => setNewAmount(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {newTransferToAccountId 
-                      ? 'Enter transfer amount (will be deducted from source and added to destination)'
-                      : 'Use negative for expenses, positive for income'
-                    }
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-account">Account *</Label>
-                  <select
-                    id="new-account"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                    value={newAccountId}
-                    onChange={(e) => setNewAccountId(e.target.value)}
-                  >
-                    <option value="">Select an account</option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-subcategory">Expense Category</Label>
-                  <select
-                    id="new-subcategory"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                    value={newSubcategoryId}
-                    onChange={(e) => {
-                      setNewSubcategoryId(e.target.value)
-                      if (e.target.value) setNewTransferToAccountId('')
-                    }}
-                    disabled={!!newTransferToAccountId}
-                  >
-                    <option value="">None (for transfers)</option>
-                    {subcategories.map((sub) => (
-                      <option key={sub.id} value={sub.id}>
-                        {sub.name} {sub.group?.name && `(${sub.group.name})`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-transfer">Transfer To Account</Label>
-                  <select
-                    id="new-transfer"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                    value={newTransferToAccountId}
-                    onChange={(e) => {
-                      setNewTransferToAccountId(e.target.value)
-                      if (e.target.value) setNewSubcategoryId('')
-                    }}
-                    disabled={!!newSubcategoryId}
-                  >
-                    <option value="">None (regular transaction)</option>
-                    {accounts.filter(a => a.id !== newAccountId).map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    Select this for transfers between your accounts
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-date">Date *</Label>
-                  <Input 
-                    id="new-date" 
-                    type="date" 
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-notes">Notes (Optional)</Label>
-                  <Input 
-                    id="new-notes" 
-                    placeholder="Additional details"
-                    value={newNotes}
-                    onChange={(e) => setNewNotes(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-reference-number">Reference Number (Optional)</Label>
-                  <Input 
-                    id="new-reference-number" 
-                    placeholder="e.g., Check #, Transaction ID"
-                    maxLength={25}
-                    value={newReferenceNumber}
-                    onChange={(e) => setNewReferenceNumber(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-reference">Reference (Optional)</Label>
-                  <Input 
-                    id="new-reference" 
-                    placeholder="Additional reference or memo"
-                    maxLength={250}
-                    value={newReference}
-                    onChange={(e) => setNewReference(e.target.value)}
-                  />
-                </div>
-                <Button className="w-full" onClick={handleAddTransaction}>
+          
+          {/* Large Screen: Dialog */}
+          {isLargeScreen ? (
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
                   Add Transaction
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Add Transaction</DialogTitle>
+                  <DialogDescription>
+                    Manually add a transaction to any account
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-description">Description *</Label>
+                    <Input 
+                      id="new-description" 
+                      placeholder="e.g., Coffee at Starbucks"
+                      value={newDescription}
+                      onChange={(e) => setNewDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-amount">Amount *</Label>
+                    <Input
+                      id="new-amount"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={newAmount}
+                      onChange={(e) => setNewAmount(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {newTransferToAccountId 
+                        ? 'Enter transfer amount (will be deducted from source and added to destination)'
+                        : 'Use negative for expenses, positive for income'
+                      }
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-account">Account *</Label>
+                    <select
+                      id="new-account"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                      value={newAccountId}
+                      onChange={(e) => setNewAccountId(e.target.value)}
+                    >
+                      <option value="">Select an account</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-subcategory">Expense Category</Label>
+                    <select
+                      id="new-subcategory"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                      value={newSubcategoryId}
+                      onChange={(e) => {
+                        setNewSubcategoryId(e.target.value)
+                        if (e.target.value) setNewTransferToAccountId('')
+                      }}
+                      disabled={!!newTransferToAccountId}
+                    >
+                      <option value="">None (for transfers)</option>
+                      {subcategories.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name} {sub.group?.name && `(${sub.group.name})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-transfer">Transfer To Account</Label>
+                    <select
+                      id="new-transfer"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                      value={newTransferToAccountId}
+                      onChange={(e) => {
+                        setNewTransferToAccountId(e.target.value)
+                        if (e.target.value) setNewSubcategoryId('')
+                      }}
+                      disabled={!!newSubcategoryId}
+                    >
+                      <option value="">None (regular transaction)</option>
+                      {accounts.filter(a => a.id !== newAccountId).map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      Select this for transfers between your accounts
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-date">Date *</Label>
+                    <Input 
+                      id="new-date" 
+                      type="date" 
+                      value={newDate}
+                      onChange={(e) => setNewDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-notes">Notes (Optional)</Label>
+                    <Input 
+                      id="new-notes" 
+                      placeholder="Additional details"
+                      value={newNotes}
+                      onChange={(e) => setNewNotes(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-reference-number">Reference Number (Optional)</Label>
+                    <Input 
+                      id="new-reference-number" 
+                      placeholder="e.g., Check #, Transaction ID"
+                      maxLength={25}
+                      value={newReferenceNumber}
+                      onChange={(e) => setNewReferenceNumber(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-reference">Reference (Optional)</Label>
+                    <Input 
+                      id="new-reference" 
+                      placeholder="Additional reference or memo"
+                      maxLength={250}
+                      value={newReference}
+                      onChange={(e) => setNewReference(e.target.value)}
+                    />
+                  </div>
+                  <Button className="w-full" onClick={handleAddTransaction}>
+                    Add Transaction
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            /* Small/Medium Screen: Drawer from bottom */
+            <Drawer open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DrawerTrigger asChild>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Add Transaction
+                </Button>
+              </DrawerTrigger>
+              <DrawerContent>
+                <DrawerHeader>
+                  <DrawerTitle>Add Transaction</DrawerTitle>
+                  <DrawerDescription>
+                    Manually add a transaction to any account
+                  </DrawerDescription>
+                </DrawerHeader>
+                <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-description-drawer">Description *</Label>
+                    <Input 
+                      id="new-description-drawer" 
+                      placeholder="e.g., Coffee at Starbucks"
+                      value={newDescription}
+                      onChange={(e) => setNewDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-amount-drawer">Amount *</Label>
+                    <Input
+                      id="new-amount-drawer"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={newAmount}
+                      onChange={(e) => setNewAmount(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {newTransferToAccountId 
+                        ? 'Enter transfer amount (will be deducted from source and added to destination)'
+                        : 'Use negative for expenses, positive for income'
+                      }
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-account-drawer">Account *</Label>
+                    <select
+                      id="new-account-drawer"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                      value={newAccountId}
+                      onChange={(e) => setNewAccountId(e.target.value)}
+                    >
+                      <option value="">Select an account</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-subcategory-drawer">Expense Category</Label>
+                    <select
+                      id="new-subcategory-drawer"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                      value={newSubcategoryId}
+                      onChange={(e) => {
+                        setNewSubcategoryId(e.target.value)
+                        if (e.target.value) setNewTransferToAccountId('')
+                      }}
+                      disabled={!!newTransferToAccountId}
+                    >
+                      <option value="">None (for transfers)</option>
+                      {subcategories.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name} {sub.group?.name && `(${sub.group.name})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-transfer-drawer">Transfer To Account</Label>
+                    <select
+                      id="new-transfer-drawer"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                      value={newTransferToAccountId}
+                      onChange={(e) => {
+                        setNewTransferToAccountId(e.target.value)
+                        if (e.target.value) setNewSubcategoryId('')
+                      }}
+                      disabled={!!newSubcategoryId}
+                    >
+                      <option value="">None (regular transaction)</option>
+                      {accounts.filter(a => a.id !== newAccountId).map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      Select this for transfers between your accounts
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-date-drawer">Date *</Label>
+                    <Input 
+                      id="new-date-drawer" 
+                      type="date" 
+                      value={newDate}
+                      onChange={(e) => setNewDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-notes-drawer">Notes (Optional)</Label>
+                    <Input 
+                      id="new-notes-drawer" 
+                      placeholder="Additional details"
+                      value={newNotes}
+                      onChange={(e) => setNewNotes(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-reference-number-drawer">Reference Number (Optional)</Label>
+                    <Input 
+                      id="new-reference-number-drawer" 
+                      placeholder="e.g., Check #, Transaction ID"
+                      maxLength={25}
+                      value={newReferenceNumber}
+                      onChange={(e) => setNewReferenceNumber(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-reference-drawer">Reference (Optional)</Label>
+                    <Input 
+                      id="new-reference-drawer" 
+                      placeholder="Additional reference or memo"
+                      maxLength={250}
+                      value={newReference}
+                      onChange={(e) => setNewReference(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <DrawerFooter>
+                  <Button className="w-full" onClick={handleAddTransaction}>
+                    Add Transaction
+                  </Button>
+                  <DrawerClose asChild>
+                    <Button variant="outline" className="w-full">Cancel</Button>
+                  </DrawerClose>
+                </DrawerFooter>
+              </DrawerContent>
+            </Drawer>
+          )}
         </div>
       </div>
 

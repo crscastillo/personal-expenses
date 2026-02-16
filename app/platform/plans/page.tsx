@@ -15,6 +15,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -67,6 +77,18 @@ export default function PlansPage() {
   const [newPlanItemDueDate, setNewPlanItemDueDate] = useState('')
   const [allExpenseCategories, setAllExpenseCategories] = useState<any[]>([])
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null)
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isLargeScreen, setIsLargeScreen] = useState(false)
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsLargeScreen(window.innerWidth >= 1024) // lg breakpoint
+    }
+    
+    checkScreenSize()
+    window.addEventListener('resize', checkScreenSize)
+    return () => window.removeEventListener('resize', checkScreenSize)
+  }, [])
 
   useEffect(() => {
     loadPlanData()
@@ -338,6 +360,9 @@ export default function PlansPage() {
       setNewPlanItemCategoryId('')
       setNewPlanItemDueDate('')
 
+      // Close dialog/drawer
+      setIsAddDialogOpen(false)
+
       // Reload data
       await loadPlanData()
     } catch (error: any) {
@@ -456,64 +481,133 @@ export default function PlansPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className="gap-2" size="sm">
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Add Plan Item</span>
-                <span className="sm:hidden">Add</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Plan Item</DialogTitle>
-                <DialogDescription>
-                  Add a planned amount for an expense category
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="expense-category">Expense Category</Label>
-                  <select
-                    id="expense-category"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                    value={newPlanItemCategoryId}
-                    onChange={(e) => setNewPlanItemCategoryId(e.target.value)}
-                  >
-                    <option value="">Select a category</option>
-                    {allExpenseCategories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name} {cat.expense_group?.name && `(${cat.expense_group.name})`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="amount">Planned Amount</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="amount"
-                      type="number"
-                      placeholder="0.00"
-                      value={newPlanItemAmount}
-                      onChange={(e) => setNewPlanItemAmount(e.target.value)}
+          
+          {/* Large Screen: Dialog */}
+          {isLargeScreen ? (
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2" size="sm">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Add Plan Item</span>
+                  <span className="sm:hidden">Add</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Plan Item</DialogTitle>
+                  <DialogDescription>
+                    Add a planned amount for an expense category
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="expense-category">Expense Category</Label>
+                    <select
+                      id="expense-category"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                      value={newPlanItemCategoryId}
+                      onChange={(e) => setNewPlanItemCategoryId(e.target.value)}
+                    >
+                      <option value="">Select a category</option>
+                      {allExpenseCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} {cat.expense_group?.name && `(${cat.expense_group.name})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Planned Amount</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="amount"
+                        type="number"
+                        placeholder="0.00"
+                        value={newPlanItemAmount}
+                        onChange={(e) => setNewPlanItemAmount(e.target.value)}
+                      />
+                      <Calculator onCalculate={(value) => setNewPlanItemAmount(value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dueDate">Due Date (Optional)</Label>
+                    <Input 
+                      id="dueDate" 
+                      type="date" 
+                      value={newPlanItemDueDate}
+                      onChange={(e) => setNewPlanItemDueDate(e.target.value)}
                     />
-                    <Calculator onCalculate={(value) => setNewPlanItemAmount(value)} />
+                  </div>
+                  <Button className="w-full" onClick={handleAddPlanItem}>Add Plan Item</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            /* Small/Medium Screen: Drawer from bottom */
+            <Drawer open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DrawerTrigger asChild>
+                <Button className="gap-2" size="sm">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Add Plan Item</span>
+                  <span className="sm:hidden">Add</span>
+                </Button>
+              </DrawerTrigger>
+              <DrawerContent>
+                <DrawerHeader>
+                  <DrawerTitle>Add Plan Item</DrawerTitle>
+                  <DrawerDescription>
+                    Add a planned amount for an expense category
+                  </DrawerDescription>
+                </DrawerHeader>
+                <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
+                  <div className="space-y-2">
+                    <Label htmlFor="expense-category-drawer">Expense Category</Label>
+                    <select
+                      id="expense-category-drawer"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                      value={newPlanItemCategoryId}
+                      onChange={(e) => setNewPlanItemCategoryId(e.target.value)}
+                    >
+                      <option value="">Select a category</option>
+                      {allExpenseCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} {cat.expense_group?.name && `(${cat.expense_group.name})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="amount-drawer">Planned Amount</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="amount-drawer"
+                        type="number"
+                        placeholder="0.00"
+                        value={newPlanItemAmount}
+                        onChange={(e) => setNewPlanItemAmount(e.target.value)}
+                      />
+                      <Calculator onCalculate={(value) => setNewPlanItemAmount(value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dueDate-drawer">Due Date (Optional)</Label>
+                    <Input 
+                      id="dueDate-drawer" 
+                      type="date" 
+                      value={newPlanItemDueDate}
+                      onChange={(e) => setNewPlanItemDueDate(e.target.value)}
+                    />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dueDate">Due Date (Optional)</Label>
-                  <Input 
-                    id="dueDate" 
-                    type="date" 
-                    value={newPlanItemDueDate}
-                    onChange={(e) => setNewPlanItemDueDate(e.target.value)}
-                  />
-                </div>
-                <Button className="w-full" onClick={handleAddPlanItem}>Add Plan Item</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+                <DrawerFooter>
+                  <Button className="w-full" onClick={handleAddPlanItem}>Add Plan Item</Button>
+                  <DrawerClose asChild>
+                    <Button variant="outline" className="w-full">Cancel</Button>
+                  </DrawerClose>
+                </DrawerFooter>
+              </DrawerContent>
+            </Drawer>
+          )}
         </div>
       </div>
 
@@ -626,7 +720,7 @@ export default function PlansPage() {
             const groupPlanned = group.subcategories.reduce((sum, sub) => sum + (sub.plannedAmount || 0), 0)
             const groupSpent = group.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0)
             const groupRemaining = groupPlanned - groupSpent
-            const groupPercentage = groupPlanned > 0 ? (groupSpent / groupPlanned) * 100 : 0
+            const groupPercentage = groupPlanned > 0 ? (groupSpent / groupPlanned) * 100 : (groupSpent > 0 ? 100 : 0)
             
             return (
               <Card key={group.id}>
@@ -669,21 +763,19 @@ export default function PlansPage() {
                       )}
                     </div>
                   </div>
-                  {groupPlanned > 0 && (
-                    <div className="mt-3 space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Overall Progress</span>
-                        <span className="font-bold">{groupPercentage.toFixed(0)}%</span>
-                      </div>
-                      <Progress 
-                        value={Math.min(groupPercentage, 100)} 
-                        className="h-3"
-                        indicatorStyle={{
-                          backgroundColor: groupPercentage > 100 ? '#ef4444' : group.color,
-                        }}
-                      />
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Overall Progress</span>
+                      <span className="font-bold">{groupPercentage.toFixed(0)}%</span>
                     </div>
-                  )}
+                    <Progress 
+                      value={Math.min(groupPercentage, 100)} 
+                      className="h-3"
+                      indicatorStyle={{
+                        backgroundColor: groupPercentage > 100 ? '#ef4444' : group.color,
+                      }}
+                    />
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">

@@ -15,6 +15,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -56,6 +66,7 @@ export default function AccountsPage() {
   const [accountsList, setAccountsList] = useState<Account[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isLargeScreen, setIsLargeScreen] = useState(false)
   
   // Form state
   const [newAccountName, setNewAccountName] = useState('')
@@ -64,6 +75,16 @@ export default function AccountsPage() {
   const [newAccountNumber, setNewAccountNumber] = useState('')
   const [newBalance, setNewBalance] = useState('')
   const [newColor, setNewColor] = useState('#3b82f6')
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsLargeScreen(window.innerWidth >= 1024) // lg breakpoint
+    }
+    
+    checkScreenSize()
+    window.addEventListener('resize', checkScreenSize)
+    return () => window.removeEventListener('resize', checkScreenSize)
+  }, [])
 
   // Load accounts from Supabase
   useEffect(() => {
@@ -238,87 +259,179 @@ export default function AccountsPage() {
             Manage your bank accounts, credit cards, and cash
           </p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 w-full sm:w-auto">
-              <Plus className="h-4 w-4" />
-              Add Account
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Account</DialogTitle>
-              <DialogDescription>
-                Add a bank account, credit card, or cash to track
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="accountName">Account Name</Label>
-                <Input 
-                  id="accountName" 
-                  placeholder="e.g., Chase Checking" 
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                />
+        
+        {/* Large Screen: Dialog */}
+        {isLargeScreen ? (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 w-full sm:w-auto">
+                <Plus className="h-4 w-4" />
+                Add Account
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Account</DialogTitle>
+                <DialogDescription>
+                  Add a bank account, credit card, or cash to track
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="accountName">Account Name</Label>
+                  <Input 
+                    id="accountName" 
+                    placeholder="e.g., Chase Checking" 
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="accountType">Account Type</Label>
+                  <select
+                    id="accountType"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                    value={newAccountType}
+                    onChange={(e) => setNewAccountType(e.target.value as any)}
+                  >
+                    <option value="checking">Checking</option>
+                    <option value="savings">Savings</option>
+                    <option value="credit_card">Credit Card</option>
+                    <option value="cash">Cash</option>
+                    <option value="investment">Investment</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="institution">Institution (Optional)</Label>
+                  <Input 
+                    id="institution" 
+                    placeholder="e.g., Chase Bank" 
+                    value={newInstitution}
+                    onChange={(e) => setNewInstitution(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="accountNumber">Account Number (Optional)</Label>
+                  <Input 
+                    id="accountNumber" 
+                    placeholder="e.g., ****1234" 
+                    value={newAccountNumber}
+                    onChange={(e) => setNewAccountNumber(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="balance">Current Balance</Label>
+                  <Input 
+                    id="balance" 
+                    type="number" 
+                    step="0.01" 
+                    placeholder="0.00" 
+                    value={newBalance}
+                    onChange={(e) => setNewBalance(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="color">Color</Label>
+                  <Input 
+                    id="color" 
+                    type="color" 
+                    value={newColor}
+                    onChange={(e) => setNewColor(e.target.value)}
+                  />
+                </div>
+                <Button className="w-full" onClick={handleAddAccount}>Add Account</Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="accountType">Account Type</Label>
-                <select
-                  id="accountType"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                  value={newAccountType}
-                  onChange={(e) => setNewAccountType(e.target.value as any)}
-                >
-                  <option value="checking">Checking</option>
-                  <option value="savings">Savings</option>
-                  <option value="credit_card">Credit Card</option>
-                  <option value="cash">Cash</option>
-                  <option value="investment">Investment</option>
-                </select>
+            </DialogContent>
+          </Dialog>
+        ) : (
+          /* Small/Medium Screen: Drawer from bottom */
+          <Drawer open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DrawerTrigger asChild>
+              <Button className="gap-2 w-full sm:w-auto">
+                <Plus className="h-4 w-4" />
+                Add Account
+              </Button>
+            </DrawerTrigger>
+            <DrawerContent>
+              <DrawerHeader>
+                <DrawerTitle>Add New Account</DrawerTitle>
+                <DrawerDescription>
+                  Add a bank account, credit card, or cash to track
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
+                <div className="space-y-2">
+                  <Label htmlFor="accountName-drawer">Account Name</Label>
+                  <Input 
+                    id="accountName-drawer" 
+                    placeholder="e.g., Chase Checking" 
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="accountType-drawer">Account Type</Label>
+                  <select
+                    id="accountType-drawer"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+                    value={newAccountType}
+                    onChange={(e) => setNewAccountType(e.target.value as any)}
+                  >
+                    <option value="checking">Checking</option>
+                    <option value="savings">Savings</option>
+                    <option value="credit_card">Credit Card</option>
+                    <option value="cash">Cash</option>
+                    <option value="investment">Investment</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="institution-drawer">Institution (Optional)</Label>
+                  <Input 
+                    id="institution-drawer" 
+                    placeholder="e.g., Chase Bank" 
+                    value={newInstitution}
+                    onChange={(e) => setNewInstitution(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="accountNumber-drawer">Account Number (Optional)</Label>
+                  <Input 
+                    id="accountNumber-drawer" 
+                    placeholder="e.g., ****1234" 
+                    value={newAccountNumber}
+                    onChange={(e) => setNewAccountNumber(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="balance-drawer">Current Balance</Label>
+                  <Input 
+                    id="balance-drawer" 
+                    type="number" 
+                    step="0.01" 
+                    placeholder="0.00" 
+                    value={newBalance}
+                    onChange={(e) => setNewBalance(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="color-drawer">Color</Label>
+                  <Input 
+                    id="color-drawer" 
+                    type="color" 
+                    value={newColor}
+                    onChange={(e) => setNewColor(e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="institution">Institution (Optional)</Label>
-                <Input 
-                  id="institution" 
-                  placeholder="e.g., Chase Bank" 
-                  value={newInstitution}
-                  onChange={(e) => setNewInstitution(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="accountNumber">Account Number (Optional)</Label>
-                <Input 
-                  id="accountNumber" 
-                  placeholder="e.g., ****1234" 
-                  value={newAccountNumber}
-                  onChange={(e) => setNewAccountNumber(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="balance">Current Balance</Label>
-                <Input 
-                  id="balance" 
-                  type="number" 
-                  step="0.01" 
-                  placeholder="0.00" 
-                  value={newBalance}
-                  onChange={(e) => setNewBalance(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="color">Color</Label>
-                <Input 
-                  id="color" 
-                  type="color" 
-                  value={newColor}
-                  onChange={(e) => setNewColor(e.target.value)}
-                />
-              </div>
-              <Button className="w-full" onClick={handleAddAccount}>Add Account</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+              <DrawerFooter>
+                <Button className="w-full" onClick={handleAddAccount}>Add Account</Button>
+                <DrawerClose asChild>
+                  <Button variant="outline" className="w-full">Cancel</Button>
+                </DrawerClose>
+              </DrawerFooter>
+            </DrawerContent>
+          </Drawer>
+        )}
       </div>
 
       {isLoading ? (
