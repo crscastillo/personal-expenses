@@ -23,7 +23,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
 type ExpenseGroup = {
@@ -39,7 +38,6 @@ type ExpenseGroup = {
 }
 
 export default function ExpenseGroupsPage() {
-  const supabase = createClient()
   const [groups, setGroups] = useState<ExpenseGroup[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -59,19 +57,17 @@ export default function ExpenseGroupsPage() {
 
   const loadGroups = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        toast.error('Please sign in to view expense groups')
-        return
+      const response = await fetch('/api/expense-groups')
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Please sign in to view expense groups')
+          return
+        }
+        throw new Error('Failed to load expense groups')
       }
 
-      const { data, error } = await supabase
-        .from('expense_groups')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('sort_order', { ascending: true })
-
-      if (error) throw error
+      const data = await response.json()
       setGroups(data || [])
     } catch (error) {
       console.error('Error loading expense groups:', error)
@@ -96,27 +92,21 @@ export default function ExpenseGroupsPage() {
 
     setIsSaving(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        toast.error('Please sign in to add expense groups')
-        return
+      const response = await fetch('/api/expense-groups', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || null,
+          color,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to add expense group')
       }
-
-      const newGroup = {
-        user_id: user.id,
-        name: name.trim(),
-        description: description.trim() || null,
-        type,
-        color,
-        sort_order: groups.length + 1,
-        is_system: false,
-      }
-
-      const { error } = await supabase
-        .from('expense_groups')
-        .insert([newGroup])
-
-      if (error) throw error
 
       toast.success('Expense group added successfully')
       setIsAddDialogOpen(false)
@@ -147,17 +137,22 @@ export default function ExpenseGroupsPage() {
 
     setIsSaving(true)
     try {
-      const { error } = await supabase
-        .from('expense_groups')
-        .update({
+      const response = await fetch('/api/expense-groups', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: editingGroup.id,
           name: name.trim(),
           description: description.trim() || null,
-          type,
           color,
-        })
-        .eq('id', editingGroup.id)
+        }),
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error('Failed to update expense group')
+      }
 
       toast.success('Expense group updated successfully')
       setIsEditDialogOpen(false)
@@ -183,12 +178,13 @@ export default function ExpenseGroupsPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from('expense_groups')
-        .delete()
-        .eq('id', id)
+      const response = await fetch(`/api/expense-groups?id=${id}`, {
+        method: 'DELETE',
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error('Failed to delete expense group')
+      }
 
       toast.success('Expense group deleted successfully')
       loadGroups()

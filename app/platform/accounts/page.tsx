@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus, Wallet, CreditCard, DollarSign, TrendingUp } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import {
   Dialog,
   DialogContent,
@@ -61,7 +60,6 @@ const accountTypeLabels: Record<AccountType, string> = {
 
 export default function AccountsPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
   const [accountsList, setAccountsList] = useState<Account[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -86,7 +84,7 @@ export default function AccountsPage() {
     return () => window.removeEventListener('resize', checkScreenSize)
   }, [])
 
-  // Load accounts from Supabase
+  // Load accounts from API
   useEffect(() => {
     loadAccounts()
   }, [])
@@ -95,65 +93,23 @@ export default function AccountsPage() {
     try {
       setIsLoading(true)
       
-      // Get current user
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const response = await fetch('/api/accounts')
       
-      if (authError) {
-        console.error('Auth error:', authError)
-        setAccountsList([])
-        setIsLoading(false)
-        return
-      }
-      
-      if (!user) {
-        console.log('No authenticated user found')
-        setAccountsList([])
-        setIsLoading(false)
-        return
-      }
-
-      console.log('Loading accounts for user:', user.id)
-
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Supabase error - raw:', error)
-        console.error('Supabase error - stringified:', JSON.stringify(error, null, 2))
-        console.error('Supabase error - keys:', Object.keys(error))
-        throw error
-      }
-
-      // Load transactions for all accounts to calculate actual balances
-      const { data: transactions, error: transError } = await supabase
-        .from('transactions')
-        .select('account_id, amount')
-        .eq('user_id', user.id)
-
-      if (transError) {
-        console.error('Error loading transactions:', transError)
-      }
-
-      // Calculate balance for each account based on transactions
-      const accountsWithBalances = (data || []).map(account => {
-        const accountTransactions = transactions?.filter(t => t.account_id === account.id) || []
-        const calculatedBalance = accountTransactions.reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0)
-        return {
-          ...account,
-          balance: calculatedBalance
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.log('No authenticated user found')
+          setAccountsList([])
+          setIsLoading(false)
+          return
         }
-      })
+        throw new Error(`Failed to load accounts: ${response.statusText}`)
+      }
 
-      console.log('Loaded accounts:', accountsWithBalances.length)
-      setAccountsList(accountsWithBalances)
+      const accounts = await response.json()
+      console.log('Loaded accounts:', accounts.length)
+      setAccountsList(accounts)
     } catch (error: any) {
-      console.error('Catch block error - raw:', error)
-      console.error('Catch block error - stringified:', JSON.stringify(error, null, 2))
-      console.error('Catch block error - type:', typeof error)
+      console.error('Error loading accounts:', error)
       setAccountsList([])
     } finally {
       setIsLoading(false)
@@ -179,18 +135,12 @@ export default function AccountsPage() {
     const balance = parseFloat(newBalance) || 0
 
     try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        alert('You must be logged in to add an account')
-        return
-      }
-
-      // Save account to Supabase (balance field is just for reference/initialization)
-      const { data: accountData, error } = await supabase
-        .from('accounts')
-        .insert([{
-          user_id: user.id,
+      const response = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           name: newAccountName,
           type: newAccountType,
           institution: newInstitution || null,
@@ -199,41 +149,44 @@ export default function AccountsPage() {
           color: newColor,
           is_active: true,
           include_in_plan: true,
-        }])
-        .select()
-        .single()
+        }),
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error(`Failed to add account: ${response.statusText}`)
+      }
 
+      const accountData = await response.json()
       console.log('Account added successfully:', accountData)
 
       // If there's an initial balance, create an initial transaction
       if (balance !== 0) {
         // Get "Untracked" expense category for initial balance
-        const { data: expenseCategory } = await supabase
-          .from('expense_categories')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('name', 'Untracked')
-          .limit(1)
-          .single()
+        const categoriesResponse = await fetch('/api/expense-categories')
+        if (categoriesResponse.ok) {
+          const categories = await categoriesResponse.json()
+          const untrackedCategory = categories.find((c: any) => c.name === 'Untracked')
 
-        if (expenseCategory) {
-          await supabase
-            .from('transactions')
-            .insert({
-              user_id: user.id,
-              account_id: accountData.id,
-              expense_category_id: expenseCategory.id,
-              amount: balance,
-              description: 'Initial Balance',
-              transaction_date: new Date().toISOString().split('T')[0],
-              notes: 'Opening balance for account',
+          if (untrackedCategory) {
+            await fetch('/api/transactions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                account_id: accountData.id,
+                expense_category_id: untrackedCategory.id,
+                amount: balance,
+                description: 'Initial Balance',
+                date: new Date().toISOString().split('T')[0],
+                notes: 'Opening balance for account',
+              }),
             })
+          }
         }
       }
 
-      // Reload accounts from database
+      // Reload accounts from API
       await loadAccounts()
 
       // Reset form and close dialog
