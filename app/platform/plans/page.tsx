@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Calculator } from '@/components/calculator'
+import { Progress } from '@/components/ui/progress'
 
 // Type definitions
 type Subcategory = {
@@ -437,7 +438,7 @@ export default function PlansPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Monthly Plan</h1>
           <p className="text-sm text-muted-foreground md:text-base">
-            Review your spending for {getMonthName(currentMonth)} {currentYear}
+            Track your budget for {getMonthName(currentMonth)} {currentYear}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -455,27 +456,6 @@ export default function PlansPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2" size="sm">
-                <Copy className="h-4 w-4" />
-                <span className="hidden sm:inline">Copy from Previous</span>
-                <span className="sm:hidden">Copy</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Copy Plan</DialogTitle>
-                <DialogDescription>
-                  Copy plan from previous month to get started quickly
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <p>This will copy all plan items from the previous month.</p>
-                <Button className="w-full">Copy Plan</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
           <Dialog>
             <DialogTrigger asChild>
               <Button className="gap-2" size="sm">
@@ -537,242 +517,301 @@ export default function PlansPage() {
         </div>
       </div>
 
-      {/* Charts */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Income by Source</CardTitle>
-            <CardDescription>Actual income received this month</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[300px]">
-            {incomeChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={incomeChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {incomeChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => formatCurrency(Number(value) || 0)} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                No income received this month
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Expenses by Category</CardTitle>
-            <CardDescription>Actual spending by category this month</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[300px]">
-            {expenseChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={expenseChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {expenseChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => formatCurrency(Number(value) || 0)} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                No expenses recorded this month
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Plan Categories */}
+      {/* Summary Cards */}
       <div className="space-y-4">
-        {categories
-          .filter(cat => cat.subcategories.some(sub => sub.actualAmount > 0 || sub.plannedAmount > 0))
-          .map((category) => {
-          const totalPlanned = category.subcategories.reduce(
-            (sum, sub) => sum + sub.plannedAmount,
-            0
-          )
-          const totalActual = category.subcategories.reduce(
-            (sum, sub) => sum + sub.actualAmount,
-            0
-          )
-          const percentage = totalPlanned > 0 ? (totalActual / totalPlanned) * 100 : 100
+        <div className="grid gap-4 md:grid-cols-4">
+          {(() => {
+            const allExpenseItems = categories
+              .filter(cat => cat.type === 'expense')
+              .flatMap(cat => cat.subcategories)
+            
+            const totalPlanned = allExpenseItems.reduce((sum, item) => sum + (item.plannedAmount || 0), 0)
+            const totalSpent = allExpenseItems.reduce((sum, item) => sum + item.actualAmount, 0)
+            const remaining = totalPlanned - totalSpent
+            const completedCount = allExpenseItems.filter(item => item.isCompleted || item.actualAmount >= (item.plannedAmount || 0)).length
+            
+            return (
+              <>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Total Planned</CardDescription>
+                    <CardTitle className="text-2xl">{formatCurrency(totalPlanned)}</CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Total Spent</CardDescription>
+                    <CardTitle className="text-2xl" style={{ color: totalSpent > totalPlanned ? '#ef4444' : undefined }}>
+                      {formatCurrency(totalSpent)}
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Remaining</CardDescription>
+                    <CardTitle className="text-2xl" style={{ color: remaining >= 0 ? '#22c55e' : '#ef4444' }}>
+                      {formatCurrency(remaining)}
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Completed Items</CardDescription>
+                    <CardTitle className="text-2xl">
+                      {completedCount} / {allExpenseItems.length}
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
+              </>
+            )
+          })()}
+        </div>
 
+        {/* Overall Budget Progress Bar */}
+        {(() => {
+          const allExpenseItems = categories
+            .filter(cat => cat.type === 'expense')
+            .flatMap(cat => cat.subcategories)
+          
+          const totalPlanned = allExpenseItems.reduce((sum, item) => sum + (item.plannedAmount || 0), 0)
+          const totalSpent = allExpenseItems.reduce((sum, item) => sum + item.actualAmount, 0)
+          const overallPercentage = totalPlanned > 0 ? (totalSpent / totalPlanned) * 100 : 0
+          
+          if (totalPlanned === 0) return null
+          
           return (
-            <Card key={category.id}>
-              <CardHeader>
+            <Card>
+              <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: category.color }}
-                    />
-                    <CardTitle>{category.name}</CardTitle>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    {totalPlanned > 0 && (
-                      <div className="text-right">
-                        <div className="text-sm text-muted-foreground">Planned</div>
-                        <div className="font-semibold">{formatCurrency(totalPlanned)}</div>
-                      </div>
-                    )}
-                    <div className="text-right">
-                      <div className="text-sm text-muted-foreground">
-                        {totalPlanned > 0 ? 'Actual' : 'Total'}
-                      </div>
-                      <div className="font-semibold" style={{ color: category.color }}>
-                        {formatCurrency(totalActual)}
-                      </div>
-                    </div>
-                    {totalPlanned > 0 && (
-                      <div className="text-right">
-                        <div className="text-sm text-muted-foreground">Remaining</div>
-                        <div
-                          className="font-semibold"
-                          style={{
-                            color: totalPlanned - totalActual >= 0 ? '#22c55e' : '#ef4444',
-                          }}
-                        >
-                          {formatCurrency(totalPlanned - totalActual)}
-                        </div>
-                      </div>
-                    )}
+                  <CardTitle className="text-lg">Monthly Budget Progress</CardTitle>
+                  <div className="text-2xl font-bold" style={{ 
+                    color: overallPercentage > 100 ? '#ef4444' : overallPercentage >= 90 ? '#f59e0b' : '#22c55e' 
+                  }}>
+                    {overallPercentage.toFixed(1)}%
                   </div>
                 </div>
-                {totalPlanned > 0 && (
-                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full transition-all"
-                      style={{
-                        width: `${Math.min(percentage, 100)}%`,
-                        backgroundColor: category.color,
+                <div className="mt-4 space-y-2">
+                  <div className="relative">
+                    <Progress 
+                      value={Math.min(overallPercentage, 100)} 
+                      className="h-6"
+                      indicatorStyle={{
+                        backgroundColor: overallPercentage > 100 ? '#ef4444' : overallPercentage >= 90 ? '#f59e0b' : '#3b82f6',
                       }}
                     />
+                    {overallPercentage >= 15 && (
+                      <div className="absolute inset-0 flex items-center justify-end pr-2">
+                        <span className="text-xs font-bold text-white drop-shadow">
+                          {formatCurrency(totalSpent)}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>Spent: {formatCurrency(totalSpent)}</span>
+                    <span>Budget: {formatCurrency(totalPlanned)}</span>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {category.subcategories
-                    .filter(sub => sub.actualAmount > 0 || sub.plannedAmount > 0)
-                    .map((sub) => {
-                      const displayAmount = sub.actualAmount
-                      const completionPercentage = sub.plannedAmount > 0 
-                        ? (displayAmount / sub.plannedAmount) * 100 
-                        : 0
-                      const isCompletedByTransactions = displayAmount >= sub.plannedAmount
-                      const showCompletionToggle = sub.plannedAmount > 0 && !isCompletedByTransactions
-                      
-                      return (
-                        <div
-                          key={sub.id}
-                          className="rounded-lg border p-3 space-y-2"
-                        >
-                          {/* Header row */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="font-medium">{sub.name}</span>
-                              {sub.dueDate && (
-                                <Badge variant="outline" className="text-xs">
-                                  Due: {new Date(sub.dueDate).toLocaleDateString()}
-                                </Badge>
-                              )}
-                              {sub.isCompleted && (
-                                <Badge variant="secondary" className="text-xs">
-                                  ✓ Complete
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className="font-medium">{formatCurrency(displayAmount)}</span>
-                              {sub.plannedAmount > 0 && (
-                                <>
-                                  <span className="text-muted-foreground">/</span>
-                                  <span className="text-muted-foreground">{formatCurrency(sub.plannedAmount)}</span>
-                                </>
-                              )}
-                              <div className="flex items-center gap-1">
-                                <Button
+            </Card>
+          )
+        })()}
+      </div>
+
+      {/* Expense Groups */}
+      <div className="space-y-4">
+        {categories
+          .filter(group => group.type === 'expense' && group.subcategories.length > 0)
+          .map((group) => {
+            const groupPlanned = group.subcategories.reduce((sum, sub) => sum + (sub.plannedAmount || 0), 0)
+            const groupSpent = group.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0)
+            const groupRemaining = groupPlanned - groupSpent
+            const groupPercentage = groupPlanned > 0 ? (groupSpent / groupPlanned) * 100 : 0
+            
+            return (
+              <Card key={group.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: group.color }}
+                      />
+                      <CardTitle>{group.name}</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {groupPlanned > 0 && (
+                        <div className="text-right">
+                          <div className="text-sm text-muted-foreground">Planned</div>
+                          <div className="font-semibold">{formatCurrency(groupPlanned)}</div>
+                        </div>
+                      )}
+                      <div className="text-right">
+                        <div className="text-sm text-muted-foreground">
+                          {groupPlanned > 0 ? 'Spent' : 'Total'}
+                        </div>
+                        <div className="font-semibold" style={{ color: group.color }}>
+                          {formatCurrency(groupSpent)}
+                        </div>
+                      </div>
+                      {groupPlanned > 0 && (
+                        <div className="text-right">
+                          <div className="text-sm text-muted-foreground">Remaining</div>
+                          <div
+                            className="font-semibold"
+                            style={{
+                              color: groupRemaining >= 0 ? '#22c55e' : '#ef4444',
+                            }}
+                          >
+                            {formatCurrency(groupRemaining)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {groupPlanned > 0 && (
+                    <div className="mt-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Overall Progress</span>
+                        <span className="font-bold">{groupPercentage.toFixed(0)}%</span>
+                      </div>
+                      <Progress 
+                        value={Math.min(groupPercentage, 100)} 
+                        className="h-3"
+                        indicatorStyle={{
+                          backgroundColor: groupPercentage > 100 ? '#ef4444' : group.color,
+                        }}
+                      />
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {group.subcategories
+                      .map((item) => {
+                        const completionPercentage = item.plannedAmount > 0 
+                          ? (item.actualAmount / item.plannedAmount) * 100 
+                          : (item.actualAmount > 0 ? 100 : 0)
+                        const isOverBudget = item.actualAmount > (item.plannedAmount || 0)
+                        const isComplete = item.isCompleted || completionPercentage >= 100
+                        
+                        return (
+                          <div
+                            key={item.id}
+                            className={`rounded-lg border p-4 transition-all ${
+                              isComplete ? 'bg-muted/30 opacity-75' : 'hover:shadow-md'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              {/* Left side: Item info */}
+                              <div className="flex-1 space-y-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3">
+                                    <div>
+                                      <div className="font-semibold">{item.name}</div>
+                                      <div className="text-sm text-muted-foreground mt-0.5">
+                                        Budget: <span className="font-semibold text-foreground">{formatCurrency(item.plannedAmount || 0)}</span>
+                                      </div>
+                                    </div>
+                                    {item.dueDate && (
+                                      <Badge variant="outline" className="text-xs">
+                                        Due: {new Date(item.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      </Badge>
+                                    )}
+                                    {isComplete && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                        Complete
+                                      </Badge>
+                                    )}
+                                    {isOverBudget && !isComplete && (
+                                      <Badge variant="destructive" className="text-xs">
+                                        Over Budget
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <div className="text-sm text-muted-foreground">Spent</div>
+                                    <div className="text-lg font-bold" style={{
+                                      color: isOverBudget ? '#ef4444' : isComplete ? '#22c55e' : undefined
+                                    }}>
+                                      {formatCurrency(item.actualAmount)}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Progress bar */}
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                      <span className="font-medium">{formatCurrency(item.actualAmount)}</span>
+                                      <span>of</span>
+                                      <span className="font-medium">{formatCurrency(item.plannedAmount || 0)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs">
+                                      <span className="font-bold text-foreground">{completionPercentage.toFixed(0)}%</span>
+                                      {item.plannedAmount > item.actualAmount && (
+                                        <span className="font-medium text-green-600 dark:text-green-400">
+                                          {formatCurrency(item.plannedAmount - item.actualAmount)} left
+                                        </span>
+                                      )}
+                                      {isOverBudget && (
+                                        <span className="font-medium text-red-600 dark:text-red-400">
+                                          {formatCurrency(item.actualAmount - (item.plannedAmount || 0))} over
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <Progress 
+                                    value={Math.min(completionPercentage, 100)} 
+                                    className="h-3"
+                                    indicatorStyle={{
+                                      backgroundColor: isOverBudget ? '#ef4444' : (isComplete ? '#22c55e' : group.color),
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              
+                              {/* Right side: Actions */}
+                              <div className="flex items-center gap-2">
+                                  <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => handleToggleCompletion(sub)}
-                                  title={sub.isCompleted ? "Mark as incomplete" : "Mark as complete"}
-                                >
-                                  {sub.isCompleted ? (
-                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                  className="h-9 w-9"
+                                  onClick={() => handleToggleCompletion(item)}
+                                  title={item.isCompleted ? "Mark as incomplete" : "Mark as complete"}
+                                  >
+                                  {item.isCompleted ? (
+                                    <CheckCircle2 className="h-5 w-5 text-green-600" />
                                   ) : (
-                                    <Circle className="h-4 w-4" />
+                                    <Circle className="h-5 w-5" />
                                   )}
-                                </Button>
-                                <Button
+                                  </Button>
+                                  <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => handleEditItem(category.id, sub)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
+                                  className="h-9 w-9"
+                                  onClick={() => handleEditItem(group.id, item)}
+                                  >
+                                  <Pencil className="h-5 w-5" />
+                                  </Button>
                               </div>
                             </div>
                           </div>
-                          
-                          {/* Progress bar */}
-                          {sub.plannedAmount > 0 && (
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-3 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden border border-gray-300 dark:border-gray-600">
-                                <div
-                                  className="h-full transition-all duration-300"
-                                  style={{
-                                    width: `${Math.min(completionPercentage, 100)}%`,
-                                    backgroundColor: completionPercentage >= 100 ? '#22c55e' : category.color,
-                                  }}
-                                />
-                              </div>
-                              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 min-w-[3rem] text-right">
-                                {completionPercentage.toFixed(0)}%
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
-        {categories.filter(cat => cat.subcategories.some(sub => sub.actualAmount > 0 || sub.plannedAmount > 0)).length === 0 && (
+                        )
+                      })}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        {categories
+          .filter(cat => cat.type === 'expense')
+          .flatMap(cat => cat.subcategories).length === 0 && (
           <Card>
             <CardContent className="py-12">
               <div className="text-center text-muted-foreground">
-                <p className="mb-2">No transactions for this month yet.</p>
-                <p className="text-sm">Add transactions to see your spending breakdown.</p>
+                <p>No expense categories found. Add some categories to start budgeting.</p>
               </div>
             </CardContent>
           </Card>
