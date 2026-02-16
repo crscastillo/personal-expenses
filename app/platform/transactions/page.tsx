@@ -31,6 +31,7 @@ import {
 export default function TransactionsPage() {
   const supabase = createClient()
   const searchParams = useSearchParams()
+  // searchParams.get() already decodes URL parameters automatically
   const accountFilter = searchParams?.get('account') || null
   
   const [transactions, setTransactions] = useState<any[]>([])
@@ -311,7 +312,8 @@ export default function TransactionsPage() {
         t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.subcategory.toLowerCase().includes(searchQuery.toLowerCase())
       
-      const matchesAccount = selectedAccount === 'all' || t.account === selectedAccount
+      // Compare trimmed account names
+      const matchesAccount = selectedAccount === 'all' || t.account.trim() === selectedAccount.trim()
       
       return matchesSearch && matchesAccount
     })

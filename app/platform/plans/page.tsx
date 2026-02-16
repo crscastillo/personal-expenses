@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, Pencil, CheckCircle2, Circle } from 'lucide-react'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 import { getMonthName, getCurrentMonth, getCurrentYear, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -28,8 +28,6 @@ type Subcategory = {
   plannedAmount: number
   actualAmount: number
   dueDate?: string
-  trackingMode: 'automatic' | 'manual'
-  completedAmount: number
   isCompleted: boolean
   planItemId?: string
 }
@@ -62,13 +60,10 @@ export default function PlansPage() {
   const [editingItem, setEditingItem] = useState<any>(null)
   const [editedAmount, setEditedAmount] = useState('')
   const [editedDueDate, setEditedDueDate] = useState('')
-  const [editedTrackingMode, setEditedTrackingMode] = useState<'automatic' | 'manual'>('automatic')
-  const [editedCompletedAmount, setEditedCompletedAmount] = useState('')
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [newPlanItemAmount, setNewPlanItemAmount] = useState('')
   const [newPlanItemCategoryId, setNewPlanItemCategoryId] = useState('')
   const [newPlanItemDueDate, setNewPlanItemDueDate] = useState('')
-  const [newPlanItemTrackingMode, setNewPlanItemTrackingMode] = useState<'automatic' | 'manual'>('automatic')
   const [allExpenseCategories, setAllExpenseCategories] = useState<any[]>([])
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null)
 
@@ -188,8 +183,6 @@ export default function PlansPage() {
               plannedAmount: planItem?.planned_amount || 0,
               actualAmount: actualAmounts[cat.id] || 0,
               dueDate: planItem?.due_date || undefined,
-              trackingMode: planItem?.tracking_mode || 'automatic',
-              completedAmount: planItem?.completed_amount || 0,
               isCompleted: planItem?.is_completed || false,
               planItemId: planItem?.id,
             }
@@ -226,9 +219,40 @@ export default function PlansPage() {
     setEditingItem({ categoryId, subcategory })
     setEditedAmount(subcategory.plannedAmount.toString())
     setEditedDueDate(subcategory.dueDate || '')
-    setEditedTrackingMode(subcategory.trackingMode || 'automatic')
-    setEditedCompletedAmount(subcategory.completedAmount?.toString() || '0')
     setIsEditDialogOpen(true)
+  }
+
+  const handleToggleCompletion = async (subcategory: any) => {
+    if (!subcategory.planItemId) return
+    
+    const newIsCompleted = !subcategory.isCompleted
+
+    try {
+      const { error } = await supabase
+        .from('plan_items')
+        .update({
+          is_completed: newIsCompleted,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', subcategory.planItemId)
+
+      if (error) throw error
+
+      // Update state directly instead of reloading all data
+      setCategories(prevCategories => 
+        prevCategories.map(category => ({
+          ...category,
+          subcategories: category.subcategories.map(sub =>
+            sub.id === subcategory.id
+              ? { ...sub, isCompleted: newIsCompleted }
+              : sub
+          )
+        }))
+      )
+    } catch (error) {
+      console.error('Error updating completion status:', error)
+      alert('Failed to update completion status. Please try again.')
+    }
   }
 
   const handleSaveEdit = async () => {
@@ -247,8 +271,6 @@ export default function PlansPage() {
           .update({
             planned_amount: newAmount,
             due_date: editedDueDate || null,
-            tracking_mode: editedTrackingMode,
-            completed_amount: editedTrackingMode === 'manual' ? parseFloat(editedCompletedAmount) || 0 : 0,
             updated_at: new Date().toISOString(),
           })
           .eq('id', planItem)
@@ -263,8 +285,6 @@ export default function PlansPage() {
             expense_category_id: editingItem.subcategory.id,
             planned_amount: newAmount,
             due_date: editedDueDate || null,
-            tracking_mode: editedTrackingMode,
-            completed_amount: editedTrackingMode === 'manual' ? parseFloat(editedCompletedAmount) || 0 : 0,
           })
 
         if (error) throw error
@@ -286,8 +306,6 @@ export default function PlansPage() {
     setEditingItem(null)
     setEditedAmount('')
     setEditedDueDate('')
-    setEditedTrackingMode('automatic')
-    setEditedCompletedAmount('0')
   }
 
   const handleAddPlanItem = async () => {
@@ -310,7 +328,6 @@ export default function PlansPage() {
           expense_category_id: newPlanItemCategoryId,
           planned_amount: amount,
           due_date: newPlanItemDueDate || null,
-          tracking_mode: newPlanItemTrackingMode,
         })
 
       if (error) throw error
@@ -319,7 +336,6 @@ export default function PlansPage() {
       setNewPlanItemAmount('')
       setNewPlanItemCategoryId('')
       setNewPlanItemDueDate('')
-      setNewPlanItemTrackingMode('automatic')
 
       // Reload data
       await loadPlanData()
@@ -330,58 +346,6 @@ export default function PlansPage() {
       } else {
         alert('Failed to add plan item. Please try again.')
       }
-    }
-  }
-
-  const handleToggleComplete = async (categoryId: string, subcategory: any) => {
-    if (subcategory.trackingMode !== 'manual') return
-    
-    const newCompletedAmount = subcategory.isCompleted ? 0 : subcategory.plannedAmount
-    const newIsCompleted = !subcategory.isCompleted
-
-    try {
-      const { error } = await supabase
-        .from('plan_items')
-        .update({
-          completed_amount: newCompletedAmount,
-          is_completed: newIsCompleted,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', subcategory.planItemId)
-
-      if (error) throw error
-
-      // Reload data
-      await loadPlanData()
-    } catch (error) {
-      console.error('Error updating completion status:', error)
-      alert('Failed to update completion status. Please try again.')
-    }
-  }
-
-  const handleSetCompletionPercentage = async (subcategory: any, percentage: number) => {
-    if (subcategory.trackingMode !== 'manual' || !subcategory.planItemId) return
-    
-    const completedAmount = (subcategory.plannedAmount * percentage) / 100
-    const isCompleted = percentage === 100
-
-    try {
-      const { error } = await supabase
-        .from('plan_items')
-        .update({
-          completed_amount: completedAmount,
-          is_completed: isCompleted,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', subcategory.planItemId)
-
-      if (error) throw error
-
-      // Reload data
-      await loadPlanData()
-    } catch (error) {
-      console.error('Error updating completion percentage:', error)
-      alert('Failed to update completion. Please try again.')
     }
   }
 
@@ -566,23 +530,6 @@ export default function PlansPage() {
                     onChange={(e) => setNewPlanItemDueDate(e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="trackingMode">Tracking Mode</Label>
-                  <select
-                    id="trackingMode"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                    value={newPlanItemTrackingMode}
-                    onChange={(e) => setNewPlanItemTrackingMode(e.target.value as 'automatic' | 'manual')}
-                  >
-                    <option value="automatic">Automatic (via transactions)</option>
-                    <option value="manual">Manual (check off as done)</option>
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    {newPlanItemTrackingMode === 'automatic' 
-                      ? 'Automatically tracks progress based on transaction categories'
-                      : 'Manually check off items as complete or partially complete'}
-                  </p>
-                </div>
                 <Button className="w-full" onClick={handleAddPlanItem}>Add Plan Item</Button>
               </div>
             </DialogContent>
@@ -671,7 +618,7 @@ export default function PlansPage() {
             0
           )
           const totalActual = category.subcategories.reduce(
-            (sum, sub) => sum + (sub.trackingMode === 'manual' ? sub.completedAmount : sub.actualAmount),
+            (sum, sub) => sum + sub.actualAmount,
             0
           )
           const percentage = totalPlanned > 0 ? (totalActual / totalPlanned) * 100 : 100
@@ -734,13 +681,12 @@ export default function PlansPage() {
                   {category.subcategories
                     .filter(sub => sub.actualAmount > 0 || sub.plannedAmount > 0)
                     .map((sub) => {
-                      const displayAmount = sub.trackingMode === 'manual' 
-                        ? sub.completedAmount 
-                        : sub.actualAmount
-                      const isManual = sub.trackingMode === 'manual'
+                      const displayAmount = sub.actualAmount
                       const completionPercentage = sub.plannedAmount > 0 
                         ? (displayAmount / sub.plannedAmount) * 100 
                         : 0
+                      const isCompletedByTransactions = displayAmount >= sub.plannedAmount
+                      const showCompletionToggle = sub.plannedAmount > 0 && !isCompletedByTransactions
                       
                       return (
                         <div
@@ -750,30 +696,19 @@ export default function PlansPage() {
                           {/* Header row */}
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                              {isManual && sub.plannedAmount > 0 && (
-                                <input
-                                  type="checkbox"
-                                  checked={sub.isCompleted}
-                                  onChange={() => handleToggleComplete(category.id, sub)}
-                                  className="h-4 w-4 rounded border-gray-300 cursor-pointer"
-                                />
-                              )}
                               <span className="font-medium">{sub.name}</span>
                               {sub.dueDate && (
                                 <Badge variant="outline" className="text-xs">
                                   Due: {new Date(sub.dueDate).toLocaleDateString()}
                                 </Badge>
                               )}
-                              {sub.plannedAmount > 0 && (
-                                <Badge 
-                                  variant={isManual ? "secondary" : "outline"} 
-                                  className="text-xs"
-                                >
-                                  {isManual ? '✓ Manual' : '⚡ Auto'}
+                              {sub.isCompleted && (
+                                <Badge variant="secondary" className="text-xs">
+                                  ✓ Complete
                                 </Badge>
                               )}
                             </div>
-                            <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-2 text-sm">
                               <span className="font-medium">{formatCurrency(displayAmount)}</span>
                               {sub.plannedAmount > 0 && (
                                 <>
@@ -781,79 +716,47 @@ export default function PlansPage() {
                                   <span className="text-muted-foreground">{formatCurrency(sub.plannedAmount)}</span>
                                 </>
                               )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleEditItem(category.id, sub)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleToggleCompletion(sub)}
+                                  title={sub.isCompleted ? "Mark as incomplete" : "Mark as complete"}
+                                >
+                                  {sub.isCompleted ? (
+                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                  ) : (
+                                    <Circle className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleEditItem(category.id, sub)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
                           </div>
-
-                          {/* Progress bar and quick actions for manual items */}
-                          {isManual && sub.plannedAmount > 0 && (
-                            <div className="space-y-2">
-                              {/* Progress bar */}
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full transition-all"
-                                    style={{
-                                      width: `${Math.min(completionPercentage, 100)}%`,
-                                      backgroundColor: completionPercentage === 100 ? '#22c55e' : category.color,
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-xs text-muted-foreground min-w-[3rem] text-right">
-                                  {completionPercentage.toFixed(0)}%
-                                </span>
+                          
+                          {/* Progress bar */}
+                          {sub.plannedAmount > 0 && (
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-3 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden border border-gray-300 dark:border-gray-600">
+                                <div
+                                  className="h-full transition-all duration-300"
+                                  style={{
+                                    width: `${Math.min(completionPercentage, 100)}%`,
+                                    backgroundColor: completionPercentage >= 100 ? '#22c55e' : category.color,
+                                  }}
+                                />
                               </div>
-                              
-                              {/* Quick action buttons */}
-                              <div className="flex gap-1">
-                                <Button
-                                  variant={completionPercentage === 0 ? "secondary" : "outline"}
-                                  size="sm"
-                                  className="h-7 text-xs flex-1"
-                                  onClick={() => handleSetCompletionPercentage(sub, 0)}
-                                >
-                                  0%
-                                </Button>
-                                <Button
-                                  variant={Math.abs(completionPercentage - 25) < 1 ? "secondary" : "outline"}
-                                  size="sm"
-                                  className="h-7 text-xs flex-1"
-                                  onClick={() => handleSetCompletionPercentage(sub, 25)}
-                                >
-                                  25%
-                                </Button>
-                                <Button
-                                  variant={Math.abs(completionPercentage - 50) < 1 ? "secondary" : "outline"}
-                                  size="sm"
-                                  className="h-7 text-xs flex-1"
-                                  onClick={() => handleSetCompletionPercentage(sub, 50)}
-                                >
-                                  50%
-                                </Button>
-                                <Button
-                                  variant={Math.abs(completionPercentage - 75) < 1 ? "secondary" : "outline"}
-                                  size="sm"
-                                  className="h-7 text-xs flex-1"
-                                  onClick={() => handleSetCompletionPercentage(sub, 75)}
-                                >
-                                  75%
-                                </Button>
-                                <Button
-                                  variant={completionPercentage === 100 ? "secondary" : "outline"}
-                                  size="sm"
-                                  className="h-7 text-xs flex-1"
-                                  onClick={() => handleSetCompletionPercentage(sub, 100)}
-                                >
-                                  100%
-                                </Button>
-                              </div>
+                              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 min-w-[3rem] text-right">
+                                {completionPercentage.toFixed(0)}%
+                              </span>
                             </div>
                           )}
                         </div>
@@ -912,103 +815,6 @@ export default function PlansPage() {
                   onChange={(e) => setEditedDueDate(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-trackingMode">Tracking Mode</Label>
-                <select
-                  id="edit-trackingMode"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-                  value={editedTrackingMode}
-                  onChange={(e) => setEditedTrackingMode(e.target.value as 'automatic' | 'manual')}
-                >
-                  <option value="automatic">Automatic (via transactions)</option>
-                  <option value="manual">Manual (check off as done)</option>
-                </select>
-                <p className="text-xs text-muted-foreground">
-                  {editedTrackingMode === 'automatic' 
-                    ? 'Automatically tracks progress based on transaction categories'
-                    : 'Manually check off items as complete or partially complete'}
-                </p>
-              </div>
-              {editedTrackingMode === 'manual' && (
-                <div className="space-y-2">
-                  <Label htmlFor="edit-completedAmount">Completion Status</Label>
-                  <div className="flex gap-1 mb-2">
-                    <Button
-                      type="button"
-                      variant={editedCompletedAmount === '0' ? "secondary" : "outline"}
-                      size="sm"
-                      className="h-8 text-xs flex-1"
-                      onClick={() => {
-                        const amount = (parseFloat(editedAmount) || 0) * 0
-                        setEditedCompletedAmount(amount.toString())
-                      }}
-                    >
-                      0%
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs flex-1"
-                      onClick={() => {
-                        const amount = (parseFloat(editedAmount) || 0) * 0.25
-                        setEditedCompletedAmount(amount.toFixed(2))
-                      }}
-                    >
-                      25%
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs flex-1"
-                      onClick={() => {
-                        const amount = (parseFloat(editedAmount) || 0) * 0.5
-                        setEditedCompletedAmount(amount.toFixed(2))
-                      }}
-                    >
-                      50%
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs flex-1"
-                      onClick={() => {
-                        const amount = (parseFloat(editedAmount) || 0) * 0.75
-                        setEditedCompletedAmount(amount.toFixed(2))
-                      }}
-                    >
-                      75%
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs flex-1"
-                      onClick={() => {
-                        setEditedCompletedAmount(editedAmount)
-                      }}
-                    >
-                      100%
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="edit-completedAmount"
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={editedCompletedAmount}
-                      onChange={(e) => setEditedCompletedAmount(e.target.value)}
-                    />
-                    <Calculator onCalculate={(value) => setEditedCompletedAmount(value)} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Amount you've marked as completed manually
-                  </p>
-                </div>
-              )}
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={handleSaveEdit}>
                   Save Changes

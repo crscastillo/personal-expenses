@@ -386,7 +386,7 @@ export default function AccountsPage() {
               key={account.id}
               className="cursor-pointer transition-all hover:shadow-md"
               onClick={() => {
-                router.push(`/app/transactions?account=${encodeURIComponent(account.name)}`)
+                router.push(`/platform/transactions?account=${encodeURIComponent(account.name)}`)
               }}
             >
               <CardHeader>
