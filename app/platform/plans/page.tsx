@@ -835,10 +835,8 @@ export default function PlansPage() {
                                 {/* Progress bar */}
                                 <div className="space-y-1.5">
                                   <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                      <span className="font-medium">{formatCurrency(item.actualAmount)}</span>
-                                      <span>of</span>
-                                      <span className="font-medium">{formatCurrency(item.plannedAmount || 0)}</span>
+                                    <div className="text-xs text-muted-foreground">
+                                      Progress
                                     </div>
                                     <div className="flex items-center gap-2 text-xs">
                                       <span className="font-bold text-foreground">{completionPercentage.toFixed(0)}%</span>
