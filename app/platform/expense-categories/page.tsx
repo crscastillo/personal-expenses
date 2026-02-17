@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Pencil, Trash2, Loader2, Filter } from 'lucide-react'
+import { Plus, Loader2, Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -12,17 +12,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -59,17 +62,27 @@ export default function ExpenseCategoriesPage() {
   const supabase = createClient()
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [groups, setGroups] = useState<ExpenseGroup[]>([])
-  const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all')
   const [isLoading, setIsLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isLargeScreen, setIsLargeScreen] = useState(false)
   
   // Form state
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [expenseGroupId, setExpenseGroupId] = useState('')
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsLargeScreen(window.innerWidth >= 1024) // lg breakpoint
+    }
+    
+    checkScreenSize()
+    window.addEventListener('resize', checkScreenSize)
+    return () => window.removeEventListener('resize', checkScreenSize)
+  }, [])
 
   useEffect(() => {
     loadData()
@@ -112,10 +125,6 @@ export default function ExpenseCategoriesPage() {
       setIsLoading(false)
     }
   }
-
-  const filteredCategories = selectedGroupFilter === 'all' 
-    ? categories 
-    : categories.filter(cat => cat.expense_group_id === selectedGroupFilter)
 
   const resetForm = () => {
     setName('')
@@ -213,13 +222,13 @@ export default function ExpenseCategoriesPage() {
     }
   }
 
-  const handleDeleteCategory = async (id: string, isCustom: boolean) => {
+  const handleDeleteCategory = async (id: string, isCustom: boolean, categoryName: string) => {
     if (!isCustom) {
       toast.error('Default categories cannot be deleted')
       return
     }
     
-    if (!confirm('Are you sure you want to delete this expense category? This may affect your transactions and plan data.')) {
+    if (!confirm(`Are you sure you want to delete "${categoryName}"? This may affect your transactions and plan data.`)) {
       return
     }
 
@@ -232,7 +241,14 @@ export default function ExpenseCategoriesPage() {
       if (error) throw error
 
       toast.success('Expense category deleted successfully')
-      loadData()
+      
+      // Update state directly without reloading
+      setCategories(prevCategories => prevCategories.filter(cat => cat.id !== id))
+      
+      // Close edit dialog if this was the category being edited
+      if (editingCategory?.id === id) {
+        handleCancelEdit()
+      }
     } catch (error) {
       console.error('Error deleting expense category:', error)
       toast.error('Failed to delete expense category')
@@ -250,78 +266,86 @@ export default function ExpenseCategoriesPage() {
     resetForm()
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
+  // Group categories by expense group
+  const groupedCategories = groups.map(group => ({
+    group,
+    categories: categories.filter(cat => cat.expense_group_id === group.id)
+  })).filter(item => item.categories.length > 0)
 
-  return (
+  return isLoading ? (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+    </div>
+  ) : (
     <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Expense Categories</h1>
           <p className="text-sm text-muted-foreground md:text-base">
-            Manage individual expense categories within your expense groups
+            Manage categories within your expense groups
           </p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 w-full sm:w-auto">
-              <Plus className="h-4 w-4" />
-              Add Category
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Expense Category</DialogTitle>
-              <DialogDescription>
-                Create a new expense category within an expense group
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="add-group">Expense Group</Label>
-                <Select value={expenseGroupId} onValueChange={setExpenseGroupId}>
-                  <SelectTrigger id="add-group">
-                    <SelectValue placeholder="Select an expense group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {groups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: group.color }}
-                          />
-                          {group.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        
+        {/* Add Category Button with Dialog/Drawer */}
+        {isLargeScreen ? (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 w-full sm:w-auto">
+                <Plus className="h-4 w-4" />
+                Add Category
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Category</DialogTitle>
+                <DialogDescription>
+                  Create a new expense category within a group
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="add-group">Expense Group</Label>
+                  <Select value={expenseGroupId} onValueChange={setExpenseGroupId}>
+                    <SelectTrigger id="add-group">
+                      <SelectValue placeholder="Select an expense group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{ backgroundColor: group.color }}
+                            />
+                            {group.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="add-name">Category Name</Label>
+                  <Input
+                    id="add-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., Tuition"
+                    className="h-12"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="add-description">Description (Optional)</Label>
+                  <Input
+                    id="add-description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="e.g., School tuition payments"
+                    className="h-12"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="add-name">Category Name</Label>
-                <Input
-                  id="add-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Tuition"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="add-description">Description</Label>
-                <Input
-                  id="add-description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g., School tuition payments"
-                />
-              </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-4">
                 <Button 
                   className="flex-1" 
                   onClick={handleAddCategory}
@@ -345,199 +369,369 @@ export default function ExpenseCategoriesPage() {
                   Cancel
                 </Button>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        ) : (
+          <Drawer open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DrawerTrigger asChild>
+              <Button className="gap-2 w-full sm:w-auto">
+                <Plus className="h-4 w-4" />
+                Add Category
+              </Button>
+            </DrawerTrigger>
+            <DrawerContent className="max-h-[85vh]">
+              <div className="flex flex-col h-full">
+                <DrawerHeader className="flex-shrink-0">
+                  <DrawerTitle>Add New Category</DrawerTitle>
+                  <DrawerDescription>
+                    Create a new expense category within a group
+                  </DrawerDescription>
+                </DrawerHeader>
+                <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+                  <div className="space-y-2">
+                    <Label htmlFor="add-group-drawer">Expense Group</Label>
+                    <Select value={expenseGroupId} onValueChange={setExpenseGroupId}>
+                      <SelectTrigger id="add-group-drawer">
+                        <SelectValue placeholder="Select an expense group" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {groups.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-3 w-3 rounded-full"
+                                style={{ backgroundColor: group.color }}
+                              />
+                              {group.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-name-drawer">Category Name</Label>
+                    <Input
+                      id="add-name-drawer"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g., Tuition"
+                      className="h-12"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-description-drawer">Description (Optional)</Label>
+                    <Input
+                      id="add-description-drawer"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="e.g., School tuition payments"
+                      className="h-12"
+                    />
+                  </div>
+                </div>
+                <DrawerFooter className="flex-shrink-0">
+                  <Button 
+                    className="w-full h-12" 
+                    onClick={handleAddCategory}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      'Add Category'
+                    )}
+                  </Button>
+                  <DrawerClose asChild>
+                    <Button variant="outline" className="w-full h-12" disabled={isSaving}>
+                      Cancel
+                    </Button>
+                  </DrawerClose>
+                </DrawerFooter>
+              </div>
+            </DrawerContent>
+          </Drawer>
+        )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <CardTitle>Expense Categories</CardTitle>
-              <CardDescription>
-                {filteredCategories.length} {filteredCategories.length === 1 ? 'category' : 'categories'} 
-                {selectedGroupFilter !== 'all' ? ' in selected group' : ' total'}
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <Select value={selectedGroupFilter} onValueChange={setSelectedGroupFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Filter by group" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Groups</SelectItem>
-                  {groups.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: group.color }}
-                        />
-                        {group.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[50px]"></TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Expense Group</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredCategories.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    {selectedGroupFilter === 'all' 
-                      ? 'No expense categories yet. Add your first category to get started.' 
-                      : 'No categories in this group.'}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredCategories.map((category) => (
-                  <TableRow key={category.id}>
-                    <TableCell>
-                      <div
-                        className="h-6 w-6 rounded-full"
-                        style={{ backgroundColor: category.group?.color || '#6b7280' }}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{category.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {category.description || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{category.group?.name || 'Unknown'}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={category.is_custom ? 'secondary' : 'outline'}>
-                        {category.is_custom ? 'Custom' : 'Default'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleEditCategory(category)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleDeleteCategory(category.id, category.is_custom)}
-                          disabled={!category.is_custom}
-                          title={!category.is_custom ? 'Default category cannot be deleted' : 'Delete category'}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Summary Stats */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Categories</CardDescription>
+            <CardTitle className="text-2xl">{categories.length}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Custom Categories</CardDescription>
+            <CardTitle className="text-2xl">
+              {categories.filter(cat => cat.is_custom).length}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Expense Groups</CardDescription>
+            <CardTitle className="text-2xl">{groups.length}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
 
-      {/* Edit Category Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
-        if (!open) handleCancelEdit()
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Expense Category</DialogTitle>
-            <DialogDescription>
-              Update expense category details
-            </DialogDescription>
-          </DialogHeader>
-          {editingCategory && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-group">Expense Group</Label>
-                <Select value={expenseGroupId} onValueChange={setExpenseGroupId}>
-                  <SelectTrigger id="edit-group">
-                    <SelectValue placeholder="Select an expense group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {groups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: group.color }}
-                          />
-                          {group.name}
+      {/* Grouped Categories */}
+      <div className="space-y-4">
+        {groupedCategories.length === 0 ? (
+          <Card>
+            <CardContent className="py-12">
+              <div className="text-center text-muted-foreground">
+                <p>No expense categories yet.</p>
+                <p className="text-sm mt-2">Add your first category to get started.</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          groupedCategories.map(({ group, categories: groupCategories }) => (
+            <Card key={group.id}>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-4 w-4 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: group.color }}
+                  />
+                  <div>
+                    <CardTitle>{group.name}</CardTitle>
+                    <CardDescription>
+                      {groupCategories.length} {groupCategories.length === 1 ? 'category' : 'categories'}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {groupCategories.map((category) => (
+                    <div
+                      key={category.id}
+                      onClick={() => handleEditCategory(category)}
+                      className="rounded-lg border p-4 transition-all cursor-pointer hover:shadow-md hover:border-primary/50 active:scale-[0.98]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-base mb-1">{category.name}</h3>
+                          {category.description && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {category.description}
+                            </p>
+                          )}
                         </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Edit Category Dialog/Drawer */}
+      {isLargeScreen ? (
+        <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+          if (!open) handleCancelEdit()
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Category</DialogTitle>
+              <DialogDescription>
+                Update details for {editingCategory?.name || 'this category'}
+              </DialogDescription>
+            </DialogHeader>
+            {editingCategory && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-group">Expense Group</Label>
+                  <Select value={expenseGroupId} onValueChange={setExpenseGroupId}>
+                    <SelectTrigger id="edit-group">
+                      <SelectValue placeholder="Select an expense group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{ backgroundColor: group.color }}
+                            />
+                            {group.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-name">Category Name</Label>
+                  <Input
+                    id="edit-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., Tuition"
+                    className="h-12"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-description">Description (Optional)</Label>
+                  <Input
+                    id="edit-description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="e.g., School tuition payments"
+                    className="h-12"
+                  />
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <Button 
+                    className="w-full h-12" 
+                    onClick={handleSaveEdit}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button 
+                      variant="outline" 
+                      className="h-12" 
+                      onClick={handleCancelEdit}
+                      disabled={isSaving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      className="h-12" 
+                      onClick={() => handleDeleteCategory(editingCategory.id, editingCategory.is_custom, editingCategory.name)}
+                      disabled={!editingCategory.is_custom || isSaving}
+                      title={!editingCategory.is_custom ? 'Default category cannot be deleted' : 'Delete this category'}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Category Name</Label>
-                <Input
-                  id="edit-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Tuition"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-description">Description</Label>
-                <Input
-                  id="edit-description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g., School tuition payments"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button 
-                  className="flex-1" 
-                  onClick={handleSaveEdit}
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="flex-1" 
-                  onClick={handleCancelEdit}
-                  disabled={isSaving}
-                >
-                  Cancel
-                </Button>
+            )}
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Drawer open={isEditDialogOpen} onOpenChange={(open) => {
+          if (!open) handleCancelEdit()
+        }}>
+          <DrawerContent className="max-h-[85vh]">
+            <div className="flex flex-col h-full">
+              <DrawerHeader className="flex-shrink-0">
+                <DrawerTitle>Edit Category</DrawerTitle>
+                <DrawerDescription>
+                  Update details for {editingCategory?.name || 'this category'}
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+                {editingCategory && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-group-drawer">Expense Group</Label>
+                      <Select value={expenseGroupId} onValueChange={setExpenseGroupId}>
+                        <SelectTrigger id="edit-group-drawer">
+                          <SelectValue placeholder="Select an expense group" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {groups.map((group) => (
+                            <SelectItem key={group.id} value={group.id}>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="h-3 w-3 rounded-full"
+                                  style={{ backgroundColor: group.color }}
+                                />
+                                {group.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-name-drawer">Category Name</Label>
+                      <Input
+                        id="edit-name-drawer"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="e.g., Tuition"
+                        className="h-12"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-description-drawer">Description (Optional)</Label>
+                      <Input
+                        id="edit-description-drawer"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="e.g., School tuition payments"
+                        className="h-12"
+                      />
+                    </div>
+                    <Separator />
+                    <div className="space-y-2">
+                      <Button 
+                        className="w-full h-12" 
+                        onClick={handleSaveEdit}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button 
+                          variant="outline" 
+                          className="h-12" 
+                          onClick={handleCancelEdit}
+                          disabled={isSaving}
+                        >
+                          Cancel
+                        </Button>
+                        <Button 
+                          variant="destructive" 
+                          className="h-12" 
+                          onClick={() => handleDeleteCategory(editingCategory.id, editingCategory.is_custom, editingCategory.name)}
+                          disabled={!editingCategory.is_custom || isSaving}
+                          title={!editingCategory.is_custom ? 'Default category cannot be deleted' : 'Delete this category'}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </DrawerContent>
+        </Drawer>
+      )}
     </div>
   )
 }

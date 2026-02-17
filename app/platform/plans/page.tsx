@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react'
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts'
 import { getMonthName, getCurrentMonth, getCurrentYear, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -383,22 +383,53 @@ export default function PlansPage() {
       try {
         const planItemId = editingItem.subcategory.planItemId
         
+        console.log('[Plans Page] Deleting plan item:', planItemId)
+        
         if (planItemId) {
           const { error } = await supabase
             .from('plan_items')
             .delete()
             .eq('id', planItemId)
 
-          if (error) throw error
+          if (error) {
+            console.error('[Plans Page] Delete error:', error)
+            throw error
+          }
+          
+          console.log('[Plans Page] Successfully deleted plan item')
+        } else {
+          console.log('[Plans Page] No planItemId, skipping database delete')
         }
 
-        // Reload data to reflect changes
-        await loadPlanData()
+        // Update state directly instead of reloading to avoid page refresh
+        console.log('[Plans Page] Updating state for category:', editingItem.categoryId, 'subcategory:', editingItem.subcategory.id)
+        setCategories(prevCategories => 
+          prevCategories.map(category => 
+            category.id === editingItem.categoryId
+              ? {
+                  ...category,
+                  subcategories: category.subcategories.map(sub =>
+                    sub.id === editingItem.subcategory.id
+                      ? {
+                          ...sub,
+                          plannedAmount: 0,
+                          dueDate: undefined,
+                          isCompleted: false,
+                          planItemId: undefined,
+                        }
+                      : sub
+                  )
+                }
+              : category
+          )
+        )
+        
+        console.log('[Plans Page] State updated, closing dialog')
         
         // Close dialog after deletion
         handleCancelEdit()
       } catch (error) {
-        console.error('Error deleting plan item:', error)
+        console.error('[Plans Page] Error deleting plan item:', error)
         alert('Failed to delete plan item. Please try again.')
       }
     }
@@ -495,6 +526,7 @@ export default function PlansPage() {
                       <Input
                         id="amount"
                         type="number"
+                        inputMode="decimal"
                         placeholder="0.00"
                         value={newPlanItemAmount}
                         onChange={(e) => setNewPlanItemAmount(e.target.value)}
@@ -525,14 +557,15 @@ export default function PlansPage() {
                   <span className="sm:hidden">Add</span>
                 </Button>
               </DrawerTrigger>
-              <DrawerContent>
-                <DrawerHeader>
-                  <DrawerTitle>Add Plan Item</DrawerTitle>
-                  <DrawerDescription>
-                    Add a planned amount for an expense category
-                  </DrawerDescription>
-                </DrawerHeader>
-                <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
+              <DrawerContent className="max-h-[70vh]">
+                <div className="flex flex-col h-full">
+                  <DrawerHeader className="flex-shrink-0">
+                    <DrawerTitle>Add Plan Item</DrawerTitle>
+                    <DrawerDescription>
+                      Add a planned amount for an expense category
+                    </DrawerDescription>
+                  </DrawerHeader>
+                  <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
                   <div className="space-y-2">
                     <Label htmlFor="expense-category-drawer">Expense Category</Label>
                     <select
@@ -555,6 +588,7 @@ export default function PlansPage() {
                       <Input
                         id="amount-drawer"
                         type="number"
+                        inputMode="decimal"
                         placeholder="0.00"
                         value={newPlanItemAmount}
                         onChange={(e) => setNewPlanItemAmount(e.target.value)}
@@ -571,13 +605,14 @@ export default function PlansPage() {
                       onChange={(e) => setNewPlanItemDueDate(e.target.value)}
                     />
                   </div>
+                  </div>
+                  <DrawerFooter className="flex-shrink-0">
+                    <Button className="w-full" onClick={handleAddPlanItem}>Add Plan Item</Button>
+                    <DrawerClose asChild>
+                      <Button variant="outline" className="w-full">Cancel</Button>
+                    </DrawerClose>
+                  </DrawerFooter>
                 </div>
-                <DrawerFooter>
-                  <Button className="w-full" onClick={handleAddPlanItem}>Add Plan Item</Button>
-                  <DrawerClose asChild>
-                    <Button variant="outline" className="w-full">Cancel</Button>
-                  </DrawerClose>
-                </DrawerFooter>
               </DrawerContent>
             </Drawer>
           )}
@@ -680,6 +715,175 @@ export default function PlansPage() {
                   </div>
                 </div>
               </CardHeader>
+            </Card>
+          )
+        })()}
+      </div>
+
+      {/* Pie Charts */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Expense Groups Pie Chart */}
+        {(() => {
+          const expenseGroupsData = categories
+            .filter(cat => cat.type === 'expense')
+            .map(cat => ({
+              name: cat.name,
+              value: cat.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0),
+              color: cat.color,
+            }))
+            .filter(item => item.value > 0)
+            .sort((a, b) => b.value - a.value)
+
+          const totalSpent = expenseGroupsData.reduce((sum, item) => sum + item.value, 0)
+
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Spending by Category</CardTitle>
+                <CardDescription>
+                  {expenseGroupsData.length > 0 
+                    ? `Total spent: ${formatCurrency(totalSpent)}`
+                    : 'No expenses recorded this month'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {expenseGroupsData.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={expenseGroupsData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => 
+                            percent && percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''
+                          }
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {expenseGroupsData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: any) => formatCurrency(value)}
+                          contentStyle={{
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            border: '1px solid #ccc',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="mt-4 space-y-2">
+                      {expenseGroupsData.map((item) => (
+                        <div key={item.name} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <span className="font-medium">{item.name}</span>
+                          </div>
+                          <span className="font-semibold">{formatCurrency(item.value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                    <p>Record some transactions to see spending breakdown</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )
+        })()}
+
+        {/* Budget Allocation by Group Pie Chart */}
+        {(() => {
+          const budgetByGroup = categories
+            .filter(cat => cat.type === 'expense')
+            .map(cat => ({
+              name: cat.name,
+              planned: cat.subcategories.reduce((sum, sub) => sum + (sub.plannedAmount || 0), 0),
+              spent: cat.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0),
+              color: cat.color,
+            }))
+            .filter(item => item.planned > 0)
+            .sort((a, b) => b.planned - a.planned)
+
+          const totalPlanned = budgetByGroup.reduce((sum, item) => sum + item.planned, 0)
+
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Budget Allocation</CardTitle>
+                <CardDescription>
+                  {budgetByGroup.length > 0 
+                    ? `Total budget: ${formatCurrency(totalPlanned)}`
+                    : 'No budget items planned this month'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {budgetByGroup.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={budgetByGroup}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => 
+                            percent && percent > 0.08 ? `${(percent * 100).toFixed(0)}%` : ''
+                          }
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="planned"
+                        >
+                          {budgetByGroup.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: any) => formatCurrency(value)}
+                          contentStyle={{
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            border: '1px solid #ccc',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="mt-4 space-y-2">
+                      {budgetByGroup.map((item) => (
+                        <div key={item.name} className="flex items-center justify-between text-sm gap-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <div
+                              className="h-3 w-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <span className="font-medium">{item.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-muted-foreground">{formatCurrency(item.spent)}</span>
+                            <span className="font-semibold">{formatCurrency(item.planned)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                    <p>Add budget amounts to plan items to see allocation</p>
+                  </div>
+                )}
+              </CardContent>
             </Card>
           )
         })()}
@@ -885,6 +1089,7 @@ export default function PlansPage() {
                     <Input
                       id="edit-amount"
                       type="number"
+                      inputMode="decimal"
                       step="0.01"
                       placeholder="0.00"
                       value={editedAmount}
@@ -942,8 +1147,8 @@ export default function PlansPage() {
                       variant="destructive" 
                       className="h-12" 
                       onClick={handleDeleteItem}
-                      disabled={editingItem.subcategory.name === 'Untracked'}
-                      title={editingItem.subcategory.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this plan item'}
+                      disabled={editingItem?.subcategory?.name === 'Untracked'}
+                      title={editingItem?.subcategory?.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this plan item'}
                     >
                       Delete
                     </Button>
@@ -957,15 +1162,16 @@ export default function PlansPage() {
         <Drawer open={isEditDialogOpen} onOpenChange={(open) => {
           if (!open) handleCancelEdit()
         }}>
-          <DrawerContent>
-            <DrawerHeader>
-              <DrawerTitle>Edit Plan Item</DrawerTitle>
-              <DrawerDescription>
-                Update details for {editingItem?.subcategory?.name || 'this item'}
-              </DrawerDescription>
-            </DrawerHeader>
-            {editingItem && (
-              <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
+          <DrawerContent className="max-h-[70vh]">
+            <div className="flex flex-col h-full">
+              <DrawerHeader className="flex-shrink-0">
+                <DrawerTitle>Edit Plan Item</DrawerTitle>
+                <DrawerDescription>
+                  Update details for {editingItem?.subcategory?.name || 'this item'}
+                </DrawerDescription>
+              </DrawerHeader>
+              {editingItem && (
+                <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
                 <div className="rounded-lg bg-muted/50 p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Spent This Month</span>
@@ -979,6 +1185,7 @@ export default function PlansPage() {
                     <Input
                       id="edit-amount-drawer"
                       type="number"
+                      inputMode="decimal"
                       step="0.01"
                       placeholder="0.00"
                       value={editedAmount}
@@ -1036,15 +1243,16 @@ export default function PlansPage() {
                       variant="destructive" 
                       className="h-12" 
                       onClick={handleDeleteItem}
-                      disabled={editingItem.subcategory.name === 'Untracked'}
-                      title={editingItem.subcategory.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this plan item'}
+                      disabled={editingItem?.subcategory?.name === 'Untracked'}
+                      title={editingItem?.subcategory?.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this plan item'}
                     >
                       Delete
                     </Button>
                   </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </DrawerContent>
         </Drawer>
       )}

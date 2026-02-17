@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Search, Filter, Download, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Upload, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react'
+import { Plus, Search, Filter, Download, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Upload, AlertCircle, CheckCircle2, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { Calculator } from '@/components/calculator'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -65,6 +65,7 @@ export default function TransactionsPage() {
   const [newNotes, setNewNotes] = useState('')
   const [newReferenceNumber, setNewReferenceNumber] = useState('')
   const [newReference, setNewReference] = useState('')
+  const [showOptionalFields, setShowOptionalFields] = useState(false)
   
   const [editingTransaction, setEditingTransaction] = useState<any>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -301,6 +302,7 @@ export default function TransactionsPage() {
       setNewNotes('')
       setNewReferenceNumber('')
       setNewReference('')
+      setShowOptionalFields(false)
       setIsAddDialogOpen(false)
 
       // Reload transactions
@@ -750,7 +752,10 @@ export default function TransactionsPage() {
           
           {/* Large Screen: Dialog */}
           {isLargeScreen ? (
-            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+              setIsAddDialogOpen(open)
+              if (!open) setShowOptionalFields(false)
+            }}>
               <DialogTrigger asChild>
                 <Button className="gap-2">
                   <Plus className="h-4 w-4" />
@@ -859,35 +864,60 @@ export default function TransactionsPage() {
                       onChange={(e) => setNewDate(e.target.value)}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-notes">Notes (Optional)</Label>
-                    <Input 
-                      id="new-notes" 
-                      placeholder="Additional details"
-                      value={newNotes}
-                      onChange={(e) => setNewNotes(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-reference-number">Reference Number (Optional)</Label>
-                    <Input 
-                      id="new-reference-number" 
-                      placeholder="e.g., Check #, Transaction ID"
-                      maxLength={25}
-                      value={newReferenceNumber}
-                      onChange={(e) => setNewReferenceNumber(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-reference">Reference (Optional)</Label>
-                    <Input 
-                      id="new-reference" 
-                      placeholder="Additional reference or memo"
-                      maxLength={250}
-                      value={newReference}
-                      onChange={(e) => setNewReference(e.target.value)}
-                    />
-                  </div>
+                  
+                  {/* Optional Fields Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowOptionalFields(!showOptionalFields)}
+                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showOptionalFields ? (
+                      <>
+                        <ChevronUp className="h-4 w-4" />
+                        Hide optional fields
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4" />
+                        Show optional fields
+                      </>
+                    )}
+                  </button>
+
+                  {showOptionalFields && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-notes">Notes</Label>
+                        <Input 
+                          id="new-notes" 
+                          placeholder="Additional details"
+                          value={newNotes}
+                          onChange={(e) => setNewNotes(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-reference-number">Reference Number</Label>
+                        <Input 
+                          id="new-reference-number" 
+                          placeholder="e.g., Check #, Transaction ID"
+                          maxLength={25}
+                          value={newReferenceNumber}
+                          onChange={(e) => setNewReferenceNumber(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-reference">Reference</Label>
+                        <Input 
+                          id="new-reference" 
+                          placeholder="Additional reference or memo"
+                          maxLength={250}
+                          value={newReference}
+                          onChange={(e) => setNewReference(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+
                   <Button className="w-full" onClick={handleAddTransaction}>
                     Add Transaction
                   </Button>
@@ -896,7 +926,10 @@ export default function TransactionsPage() {
             </Dialog>
           ) : (
             /* Small/Medium Screen: Drawer from bottom */
-            <Drawer open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <Drawer open={isAddDialogOpen} onOpenChange={(open) => {
+              setIsAddDialogOpen(open)
+              if (!open) setShowOptionalFields(false)
+            }}>
               <DrawerTrigger asChild>
                 <Button className="gap-2">
                   <Plus className="h-4 w-4" />
@@ -1005,35 +1038,59 @@ export default function TransactionsPage() {
                       onChange={(e) => setNewDate(e.target.value)}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-notes-drawer">Notes (Optional)</Label>
-                    <Input 
-                      id="new-notes-drawer" 
-                      placeholder="Additional details"
-                      value={newNotes}
-                      onChange={(e) => setNewNotes(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-reference-number-drawer">Reference Number (Optional)</Label>
-                    <Input 
-                      id="new-reference-number-drawer" 
-                      placeholder="e.g., Check #, Transaction ID"
-                      maxLength={25}
-                      value={newReferenceNumber}
-                      onChange={(e) => setNewReferenceNumber(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-reference-drawer">Reference (Optional)</Label>
-                    <Input 
-                      id="new-reference-drawer" 
-                      placeholder="Additional reference or memo"
-                      maxLength={250}
-                      value={newReference}
-                      onChange={(e) => setNewReference(e.target.value)}
-                    />
-                  </div>
+                  
+                  {/* Optional Fields Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowOptionalFields(!showOptionalFields)}
+                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showOptionalFields ? (
+                      <>
+                        <ChevronUp className="h-4 w-4" />
+                        Hide optional fields
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4" />
+                        Show optional fields
+                      </>
+                    )}
+                  </button>
+
+                  {showOptionalFields && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-notes-drawer">Notes</Label>
+                        <Input 
+                          id="new-notes-drawer" 
+                          placeholder="Additional details"
+                          value={newNotes}
+                          onChange={(e) => setNewNotes(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-reference-number-drawer">Reference Number</Label>
+                        <Input 
+                          id="new-reference-number-drawer" 
+                          placeholder="e.g., Check #, Transaction ID"
+                          maxLength={25}
+                          value={newReferenceNumber}
+                          onChange={(e) => setNewReferenceNumber(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-reference-drawer">Reference</Label>
+                        <Input 
+                          id="new-reference-drawer" 
+                          placeholder="Additional reference or memo"
+                          maxLength={250}
+                          value={newReference}
+                          onChange={(e) => setNewReference(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
                 <DrawerFooter>
                   <Button className="w-full" onClick={handleAddTransaction}>
