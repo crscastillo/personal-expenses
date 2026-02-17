@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, Pencil, CheckCircle2, Circle } from 'lucide-react'
+import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 import { getMonthName, getCurrentMonth, getCurrentYear, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -71,6 +71,7 @@ export default function PlansPage() {
   const [editingItem, setEditingItem] = useState<any>(null)
   const [editedAmount, setEditedAmount] = useState('')
   const [editedDueDate, setEditedDueDate] = useState('')
+  const [editedIsCompleted, setEditedIsCompleted] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [newPlanItemAmount, setNewPlanItemAmount] = useState('')
   const [newPlanItemCategoryId, setNewPlanItemCategoryId] = useState('')
@@ -242,41 +243,11 @@ export default function PlansPage() {
     setEditingItem({ categoryId, subcategory })
     setEditedAmount(subcategory.plannedAmount.toString())
     setEditedDueDate(subcategory.dueDate || '')
+    setEditedIsCompleted(subcategory.isCompleted || false)
     setIsEditDialogOpen(true)
   }
 
-  const handleToggleCompletion = async (subcategory: any) => {
-    if (!subcategory.planItemId) return
-    
-    const newIsCompleted = !subcategory.isCompleted
 
-    try {
-      const { error } = await supabase
-        .from('plan_items')
-        .update({
-          is_completed: newIsCompleted,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', subcategory.planItemId)
-
-      if (error) throw error
-
-      // Update state directly instead of reloading all data
-      setCategories(prevCategories => 
-        prevCategories.map(category => ({
-          ...category,
-          subcategories: category.subcategories.map(sub =>
-            sub.id === subcategory.id
-              ? { ...sub, isCompleted: newIsCompleted }
-              : sub
-          )
-        }))
-      )
-    } catch (error) {
-      console.error('Error updating completion status:', error)
-      alert('Failed to update completion status. Please try again.')
-    }
-  }
 
   const handleSaveEdit = async () => {
     if (!editingItem || !currentPlanId) return
@@ -294,6 +265,7 @@ export default function PlansPage() {
           .update({
             planned_amount: newAmount,
             due_date: editedDueDate || null,
+            is_completed: editedIsCompleted,
             updated_at: new Date().toISOString(),
           })
           .eq('id', planItem)
@@ -329,6 +301,7 @@ export default function PlansPage() {
     setEditingItem(null)
     setEditedAmount('')
     setEditedDueDate('')
+    setEditedIsCompleted(false)
   }
 
   const handleAddPlanItem = async () => {
@@ -790,28 +763,24 @@ export default function PlansPage() {
                         return (
                           <div
                             key={item.id}
-                            className={`rounded-lg border p-4 transition-all ${
-                              isComplete ? 'bg-muted/30 opacity-75' : 'hover:shadow-md'
+                            onClick={() => handleEditItem(group.id, item)}
+                            className={`rounded-lg border p-4 transition-all cursor-pointer active:scale-[0.98] ${
+                              isComplete ? 'bg-muted/30 border-green-200 dark:border-green-900' : 'hover:shadow-md hover:border-primary/50'
                             }`}
                           >
-                            <div className="flex items-start justify-between gap-4">
-                              {/* Left side: Item info */}
-                              <div className="flex-1 space-y-2">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="flex items-center gap-3">
-                                    <div>
-                                      <div className="font-semibold">{item.name}</div>
-                                      <div className="text-sm text-muted-foreground mt-0.5">
-                                        Budget: <span className="font-semibold text-foreground">{formatCurrency(item.plannedAmount || 0)}</span>
-                                      </div>
-                                    </div>
+                            <div className="space-y-3">
+                              {/* Header with title and badges */}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1">
+                                  <div className="font-semibold text-base mb-1">{item.name}</div>
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     {item.dueDate && (
                                       <Badge variant="outline" className="text-xs">
                                         Due: {new Date(item.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                       </Badge>
                                     )}
                                     {isComplete && (
-                                      <Badge variant="secondary" className="text-xs">
+                                      <Badge className="text-xs bg-green-600 hover:bg-green-700">
                                         <CheckCircle2 className="h-3 w-3 mr-1" />
                                         Complete
                                       </Badge>
@@ -822,69 +791,50 @@ export default function PlansPage() {
                                       </Badge>
                                     )}
                                   </div>
-                                  <div className="text-right flex-shrink-0">
-                                    <div className="text-sm text-muted-foreground">Spent</div>
-                                    <div className="text-lg font-bold" style={{
-                                      color: isOverBudget ? '#ef4444' : isComplete ? '#22c55e' : undefined
-                                    }}>
-                                      {formatCurrency(item.actualAmount)}
-                                    </div>
-                                  </div>
                                 </div>
-                                
-                                {/* Progress bar */}
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="text-xs text-muted-foreground">
-                                      Progress
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="font-bold text-foreground">{completionPercentage.toFixed(0)}%</span>
-                                      {item.plannedAmount > item.actualAmount && (
-                                        <span className="font-medium text-green-600 dark:text-green-400">
-                                          {formatCurrency(item.plannedAmount - item.actualAmount)} left
-                                        </span>
-                                      )}
-                                      {isOverBudget && (
-                                        <span className="font-medium text-red-600 dark:text-red-400">
-                                          {formatCurrency(item.actualAmount - (item.plannedAmount || 0))} over
-                                        </span>
-                                      )}
-                                    </div>
+                                <div className="text-right flex-shrink-0">
+                                  <div className="text-xs text-muted-foreground mb-1">Spent</div>
+                                  <div className="text-2xl font-bold" style={{
+                                    color: isOverBudget ? '#ef4444' : isComplete ? '#22c55e' : undefined
+                                  }}>
+                                    {formatCurrency(item.actualAmount)}
                                   </div>
-                                  <Progress 
-                                    value={Math.min(completionPercentage, 100)} 
-                                    className="h-3"
-                                    indicatorStyle={{
-                                      backgroundColor: isOverBudget ? '#ef4444' : (isComplete ? '#22c55e' : group.color),
-                                    }}
-                                  />
                                 </div>
                               </div>
+
+                              {/* Budget info */}
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Budget</span>
+                                <span className="font-semibold">{formatCurrency(item.plannedAmount || 0)}</span>
+                              </div>
                               
-                              {/* Right side: Actions */}
-                              <div className="flex items-center gap-2">
-                                  <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-9 w-9"
-                                  onClick={() => handleToggleCompletion(item)}
-                                  title={item.isCompleted ? "Mark as incomplete" : "Mark as complete"}
-                                  >
-                                  {item.isCompleted ? (
-                                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                                  ) : (
-                                    <Circle className="h-5 w-5" />
-                                  )}
-                                  </Button>
-                                  <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-9 w-9"
-                                  onClick={() => handleEditItem(group.id, item)}
-                                  >
-                                  <Pencil className="h-5 w-5" />
-                                  </Button>
+                              {/* Progress bar */}
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-foreground">{completionPercentage.toFixed(0)}%</span>
+                                    <span className="text-muted-foreground">complete</span>
+                                  </div>
+                                  <div>
+                                    {item.plannedAmount > item.actualAmount && (
+                                      <span className="font-medium text-green-600 dark:text-green-400">
+                                        {formatCurrency(item.plannedAmount - item.actualAmount)} left
+                                      </span>
+                                    )}
+                                    {isOverBudget && (
+                                      <span className="font-medium text-red-600 dark:text-red-400">
+                                        {formatCurrency(item.actualAmount - (item.plannedAmount || 0))} over
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <Progress 
+                                  value={Math.min(completionPercentage, 100)} 
+                                  className="h-4"
+                                  indicatorStyle={{
+                                    backgroundColor: isOverBudget ? '#ef4444' : (isComplete ? '#22c55e' : group.color),
+                                  }}
+                                />
                               </div>
                             </div>
                           </div>
@@ -908,63 +858,196 @@ export default function PlansPage() {
         )}
       </div>
 
-      {/* Edit Plan Item Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
-        if (!open) handleCancelEdit()
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Plan Item</DialogTitle>
-            <DialogDescription>
-              Update the planned amount for {editingItem?.subcategory?.name || 'this item'}
-            </DialogDescription>
-          </DialogHeader>
-          {editingItem && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-amount">Planned Amount</Label>
-                <div className="flex items-center gap-2">
+      {/* Edit Plan Item Dialog/Drawer */}
+      {isLargeScreen ? (
+        <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+          if (!open) handleCancelEdit()
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Plan Item</DialogTitle>
+              <DialogDescription>
+                Update details for {editingItem?.subcategory?.name || 'this item'}
+              </DialogDescription>
+            </DialogHeader>
+            {editingItem && (
+              <div className="space-y-4">
+                <div className="rounded-lg bg-muted/50 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Spent This Month</span>
+                    <span className="text-lg font-bold">{formatCurrency(editingItem.subcategory.actualAmount)}</span>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="edit-amount" className="text-base">Budget Amount</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="edit-amount"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={editedAmount}
+                      onChange={(e) => setEditedAmount(e.target.value)}
+                      className="text-lg h-12"
+                    />
+                    <Calculator onCalculate={(value) => setEditedAmount(value)} />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="edit-dueDate" className="text-base">Due Date (Optional)</Label>
                   <Input
-                    id="edit-amount"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={editedAmount}
-                    onChange={(e) => setEditedAmount(e.target.value)}
+                    id="edit-dueDate"
+                    type="date"
+                    value={editedDueDate}
+                    onChange={(e) => setEditedDueDate(e.target.value)}
+                    className="h-12"
                   />
-                  <Calculator onCalculate={(value) => setEditedAmount(value)} />
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div>
+                    <div className="font-medium">Mark as Complete</div>
+                    <div className="text-sm text-muted-foreground">Track completion status</div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={editedIsCompleted}
+                    onClick={() => setEditedIsCompleted(!editedIsCompleted)}
+                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                      editedIsCompleted ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                        editedIsCompleted ? 'translate-x-7' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                
+                <Separator />
+                
+                <div className="space-y-2">
+                  <Button className="w-full h-12 text-base" onClick={handleSaveEdit}>
+                    Save Changes
+                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" className="h-12" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      className="h-12" 
+                      onClick={handleDeleteItem}
+                      disabled={editingItem.subcategory.name === 'Untracked'}
+                      title={editingItem.subcategory.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this plan item'}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-dueDate">Due Date (Optional)</Label>
-                <Input
-                  id="edit-dueDate"
-                  type="date"
-                  value={editedDueDate}
-                  onChange={(e) => setEditedDueDate(e.target.value)}
-                />
+            )}
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Drawer open={isEditDialogOpen} onOpenChange={(open) => {
+          if (!open) handleCancelEdit()
+        }}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>Edit Plan Item</DrawerTitle>
+              <DrawerDescription>
+                Update details for {editingItem?.subcategory?.name || 'this item'}
+              </DrawerDescription>
+            </DrawerHeader>
+            {editingItem && (
+              <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
+                <div className="rounded-lg bg-muted/50 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Spent This Month</span>
+                    <span className="text-lg font-bold">{formatCurrency(editingItem.subcategory.actualAmount)}</span>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="edit-amount-drawer" className="text-base">Budget Amount</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="edit-amount-drawer"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={editedAmount}
+                      onChange={(e) => setEditedAmount(e.target.value)}
+                      className="text-lg h-12"
+                    />
+                    <Calculator onCalculate={(value) => setEditedAmount(value)} />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="edit-dueDate-drawer" className="text-base">Due Date (Optional)</Label>
+                  <Input
+                    id="edit-dueDate-drawer"
+                    type="date"
+                    value={editedDueDate}
+                    onChange={(e) => setEditedDueDate(e.target.value)}
+                    className="h-12"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div>
+                    <div className="font-medium">Mark as Complete</div>
+                    <div className="text-sm text-muted-foreground">Track completion status</div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={editedIsCompleted}
+                    onClick={() => setEditedIsCompleted(!editedIsCompleted)}
+                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                      editedIsCompleted ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                        editedIsCompleted ? 'translate-x-7' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                
+                <Separator />
+                
+                <div className="space-y-2">
+                  <Button className="w-full h-12 text-base" onClick={handleSaveEdit}>
+                    Save Changes
+                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" className="h-12" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      className="h-12" 
+                      onClick={handleDeleteItem}
+                      disabled={editingItem.subcategory.name === 'Untracked'}
+                      title={editingItem.subcategory.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this plan item'}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button className="flex-1" onClick={handleSaveEdit}>
-                  Save Changes
-                </Button>
-                <Button variant="outline" className="flex-1" onClick={handleCancelEdit}>
-                  Cancel
-                </Button>
-                <Button 
-                  variant="destructive" 
-                  className="flex-1" 
-                  onClick={handleDeleteItem}
-                  disabled={editingItem.subcategory.name === 'Untracked'}
-                  title={editingItem.subcategory.name === 'Untracked' ? 'System subcategory cannot be deleted' : 'Delete this plan item'}
-                >
-                  Delete
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            )}
+          </DrawerContent>
+        </Drawer>
+      )}
     </div>
   )
 }
