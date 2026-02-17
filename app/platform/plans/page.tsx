@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react'
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts'
+import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { getMonthName, getCurrentMonth, getCurrentYear, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -80,6 +80,16 @@ export default function PlansPage() {
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isLargeScreen, setIsLargeScreen] = useState(false)
+  
+  // Quick category creation states
+  const [showCreateCategory, setShowCreateCategory] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryGroupId, setNewCategoryGroupId] = useState('')
+  const [allExpenseGroups, setAllExpenseGroups] = useState<any[]>([])
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false)
+  
+  // Collapsed groups state
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -125,6 +135,9 @@ export default function PlansPage() {
       
       // Store all expense categories for dropdown
       setAllExpenseCategories(expenseCategoriesData || [])
+      
+      // Store all expense groups for category creation
+      setAllExpenseGroups(expenseGroupsData || [])
       
       // Load or create monthly plan
       let planId: string | null = null
@@ -239,6 +252,85 @@ export default function PlansPage() {
     }
   }
 
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim() || !newCategoryGroupId) {
+      alert('Please enter a category name and select an expense group')
+      return
+    }
+
+    setIsCreatingCategory(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      const { data: newCategory, error } = await supabase
+        .from('expense_categories')
+        .insert({
+          user_id: user.id,
+          expense_group_id: newCategoryGroupId,
+          name: newCategoryName.trim(),
+          is_custom: true,
+        })
+        .select('*, expense_group:expense_groups(name)')
+        .single()
+
+      if (error) throw error
+
+      // Add to categories list for dropdown
+      setAllExpenseCategories([...allExpenseCategories, newCategory])
+      
+      // Add to categories state for the group display
+      setCategories(prevCategories =>
+        prevCategories.map(group => {
+          if (group.id === newCategoryGroupId) {
+            return {
+              ...group,
+              subcategories: [
+                ...group.subcategories,
+                {
+                  id: newCategory.id,
+                  name: newCategory.name,
+                  plannedAmount: 0,
+                  actualAmount: 0,
+                  dueDate: undefined,
+                  isCompleted: false,
+                  planItemId: undefined,
+                }
+              ]
+            }
+          }
+          return group
+        })
+      )
+      
+      // Auto-select the new category
+      setNewPlanItemCategoryId(newCategory.id)
+      
+      // Reset and hide form
+      setNewCategoryName('')
+      setNewCategoryGroupId('')
+      setShowCreateCategory(false)
+      
+    } catch (error: any) {
+      console.error('Error creating category:', error)
+      alert('Failed to create category. Please try again.')
+    } finally {
+      setIsCreatingCategory(false)
+    }
+  }
+
+  const toggleGroupCollapse = (groupId: string) => {
+    setCollapsedGroups(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(groupId)) {
+        newSet.delete(groupId)
+      } else {
+        newSet.add(groupId)
+      }
+      return newSet
+    })
+  }
+
   const handleEditItem = (categoryId: string, subcategory: any) => {
     setEditingItem({ categoryId, subcategory })
     setEditedAmount(subcategory.plannedAmount.toString())
@@ -273,7 +365,7 @@ export default function PlansPage() {
         if (error) throw error
       } else {
         // Create new plan item
-        const { error } = await supabase
+        const { data: newPlanItem, error } = await supabase
           .from('plan_items')
           .insert({
             plan_id: currentPlanId,
@@ -281,12 +373,60 @@ export default function PlansPage() {
             planned_amount: newAmount,
             due_date: editedDueDate || null,
           })
+          .select()
+          .single()
 
         if (error) throw error
+        
+        // Update state with new plan item ID
+        setCategories(prevCategories =>
+          prevCategories.map(group => {
+            if (group.id === editingItem.categoryId) {
+              return {
+                ...group,
+                subcategories: group.subcategories.map(sub => {
+                  if (sub.id === editingItem.subcategory.id) {
+                    return {
+                      ...sub,
+                      plannedAmount: newAmount,
+                      dueDate: editedDueDate || undefined,
+                      isCompleted: editedIsCompleted,
+                      planItemId: newPlanItem.id,
+                    }
+                  }
+                  return sub
+                })
+              }
+            }
+            return group
+          })
+        )
       }
 
-      // Reload data to reflect changes
-      await loadPlanData()
+      // Update state optimistically for existing items
+      if (planItem) {
+        setCategories(prevCategories =>
+          prevCategories.map(group => {
+            if (group.id === editingItem.categoryId) {
+              return {
+                ...group,
+                subcategories: group.subcategories.map(sub => {
+                  if (sub.id === editingItem.subcategory.id) {
+                    return {
+                      ...sub,
+                      plannedAmount: newAmount,
+                      dueDate: editedDueDate || undefined,
+                      isCompleted: editedIsCompleted,
+                    }
+                  }
+                  return sub
+                })
+              }
+            }
+            return group
+          })
+        )
+      }
       
       setIsEditDialogOpen(false)
       setEditingItem(null)
@@ -317,7 +457,7 @@ export default function PlansPage() {
     }
 
     try {
-      const { error } = await supabase
+      const { data: newPlanItem, error } = await supabase
         .from('plan_items')
         .insert({
           plan_id: currentPlanId,
@@ -325,19 +465,72 @@ export default function PlansPage() {
           planned_amount: amount,
           due_date: newPlanItemDueDate || null,
         })
+        .select()
+        .single()
 
       if (error) throw error
+
+      // Find the category and group for this plan item
+      const category = allExpenseCategories.find(cat => cat.id === newPlanItemCategoryId)
+      
+      if (category) {
+        // Update categories state optimistically
+        setCategories(prevCategories => 
+          prevCategories.map(group => {
+            if (group.id === category.expense_group_id) {
+              // Check if subcategory already exists
+              const existingSubcategory = group.subcategories.find(sub => sub.id === newPlanItemCategoryId)
+              
+              if (existingSubcategory) {
+                // Update existing subcategory
+                return {
+                  ...group,
+                  subcategories: group.subcategories.map(sub => {
+                    if (sub.id === newPlanItemCategoryId) {
+                      return {
+                        ...sub,
+                        plannedAmount: amount,
+                        dueDate: newPlanItemDueDate || undefined,
+                        planItemId: newPlanItem.id,
+                      }
+                    }
+                    return sub
+                  })
+                }
+              } else {
+                // Add new subcategory if it doesn't exist (newly created category)
+                return {
+                  ...group,
+                  subcategories: [
+                    ...group.subcategories,
+                    {
+                      id: category.id,
+                      name: category.name,
+                      plannedAmount: amount,
+                      actualAmount: 0,
+                      dueDate: newPlanItemDueDate || undefined,
+                      isCompleted: false,
+                      planItemId: newPlanItem.id,
+                    }
+                  ]
+                }
+              }
+            }
+            return group
+          })
+        )
+      }
 
       // Reset form
       setNewPlanItemAmount('')
       setNewPlanItemCategoryId('')
       setNewPlanItemDueDate('')
+      setShowCreateCategory(false)
+      setNewCategoryName('')
+      setNewCategoryGroupId('')
 
       // Close dialog/drawer
       setIsAddDialogOpen(false)
-
-      // Reload data
-      await loadPlanData()
     } catch (error: any) {
       console.error('Error adding plan item:', error)
       if (error.code === '23505') {
@@ -505,7 +698,76 @@ export default function PlansPage() {
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="expense-category">Expense Category</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="expense-category">Expense Category</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowCreateCategory(!showCreateCategory)}
+                        className="h-auto p-1 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        {showCreateCategory ? (
+                          <>
+                            <ChevronUp className="h-3 w-3 mr-1" />
+                            Hide
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-3 w-3 mr-1" />
+                            Create new
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    
+                    {showCreateCategory && (
+                      <div className="rounded-md border border-dashed border-muted-foreground/25 p-3 space-y-3 bg-muted/20">
+                        <div className="space-y-2">
+                          <Label htmlFor="new-category-group" className="text-xs">Group</Label>
+                          <select
+                            id="new-category-group"
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                            value={newCategoryGroupId}
+                            onChange={(e) => setNewCategoryGroupId(e.target.value)}
+                          >
+                            <option value="">Select a group</option>
+                            {allExpenseGroups
+                              .sort((a, b) => {
+                                // Sort income groups first, then expenses
+                                if (a.type === 'income' && b.type !== 'income') return -1
+                                if (a.type !== 'income' && b.type === 'income') return 1
+                                return a.sort_order - b.sort_order
+                              })
+                              .map((group) => (
+                                <option key={group.id} value={group.id}>
+                                  {group.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="new-category-name" className="text-xs">Category Name</Label>
+                          <Input
+                            id="new-category-name"
+                            placeholder="e.g., Coffee, Books, Haircuts"
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            className="h-9 text-sm"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleCreateCategory}
+                          disabled={isCreatingCategory || !newCategoryName.trim() || !newCategoryGroupId}
+                          className="w-full h-8 text-xs"
+                        >
+                          {isCreatingCategory ? 'Creating...' : 'Create & Select'}
+                        </Button>
+                      </div>
+                    )}
+                    
                     <select
                       id="expense-category"
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
@@ -513,11 +775,28 @@ export default function PlansPage() {
                       onChange={(e) => setNewPlanItemCategoryId(e.target.value)}
                     >
                       <option value="">Select a category</option>
-                      {allExpenseCategories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name} {cat.expense_group?.name && `(${cat.expense_group.name})`}
-                        </option>
-                      ))}
+                      {allExpenseGroups
+                        .sort((a, b) => {
+                          // Sort income groups first, then expenses
+                          if (a.type === 'income' && b.type !== 'income') return -1
+                          if (a.type !== 'income' && b.type === 'income') return 1
+                          return a.sort_order - b.sort_order
+                        })
+                        .map((group) => {
+                          const groupCategories = allExpenseCategories.filter(
+                            cat => cat.expense_group_id === group.id
+                          )
+                          if (groupCategories.length === 0) return null
+                          return (
+                            <optgroup key={group.id} label={group.name}>
+                              {groupCategories.map((cat) => (
+                                <option key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )
+                        })}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -567,7 +846,71 @@ export default function PlansPage() {
                   </DrawerHeader>
                   <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
                   <div className="space-y-2">
-                    <Label htmlFor="expense-category-drawer">Expense Category</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="expense-category-drawer">Expense Category</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowCreateCategory(!showCreateCategory)}
+                        className="h-auto p-1 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        {showCreateCategory ? (
+                          <>
+                            <ChevronUp className="h-3 w-3 mr-1" />
+                            Hide
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-3 w-3 mr-1" />
+                            Create new
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    
+                    {showCreateCategory && (
+                      <div className="rounded-md border border-dashed border-muted-foreground/25 p-3 space-y-3 bg-muted/20">
+                        <div className="space-y-2">
+                          <Label htmlFor="new-category-group-drawer" className="text-xs">Expense Group</Label>
+                          <select
+                            id="new-category-group-drawer"
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                            value={newCategoryGroupId}
+                            onChange={(e) => setNewCategoryGroupId(e.target.value)}
+                          >
+                            <option value="">Select a group</option>
+                            {allExpenseGroups
+                              .filter(g => g.type === 'expense')
+                              .map((group) => (
+                                <option key={group.id} value={group.id}>
+                                  {group.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="new-category-name-drawer" className="text-xs">Category Name</Label>
+                          <Input
+                            id="new-category-name-drawer"
+                            placeholder="e.g., Coffee, Books, Haircuts"
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            className="h-9 text-sm"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleCreateCategory}
+                          disabled={isCreatingCategory || !newCategoryName.trim() || !newCategoryGroupId}
+                          className="w-full h-8 text-xs"
+                        >
+                          {isCreatingCategory ? 'Creating...' : 'Create & Select'}
+                        </Button>
+                      </div>
+                    )}
+                    
                     <select
                       id="expense-category-drawer"
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
@@ -575,11 +918,28 @@ export default function PlansPage() {
                       onChange={(e) => setNewPlanItemCategoryId(e.target.value)}
                     >
                       <option value="">Select a category</option>
-                      {allExpenseCategories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name} {cat.expense_group?.name && `(${cat.expense_group.name})`}
-                        </option>
-                      ))}
+                      {allExpenseGroups
+                        .sort((a, b) => {
+                          // Sort income groups first, then expenses
+                          if (a.type === 'income' && b.type !== 'income') return -1
+                          if (a.type !== 'income' && b.type === 'income') return 1
+                          return a.sort_order - b.sort_order
+                        })
+                        .map((group) => {
+                          const groupCategories = allExpenseCategories.filter(
+                            cat => cat.expense_group_id === group.id
+                          )
+                          if (groupCategories.length === 0) return null
+                          return (
+                            <optgroup key={group.id} label={group.name}>
+                              {groupCategories.map((cat) => (
+                                <option key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )
+                        })}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -619,156 +979,88 @@ export default function PlansPage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-4">
-          {(() => {
-            const allExpenseItems = categories
-              .filter(cat => cat.type === 'expense')
-              .flatMap(cat => cat.subcategories)
-            
-            const totalPlanned = allExpenseItems.reduce((sum, item) => sum + (item.plannedAmount || 0), 0)
-            const totalSpent = allExpenseItems.reduce((sum, item) => sum + item.actualAmount, 0)
-            const remaining = totalPlanned - totalSpent
-            const completedCount = allExpenseItems.filter(item => item.isCompleted || item.actualAmount >= (item.plannedAmount || 0)).length
-            
-            return (
-              <>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardDescription>Total Planned</CardDescription>
-                    <CardTitle className="text-2xl">{formatCurrency(totalPlanned)}</CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardDescription>Total Spent</CardDescription>
-                    <CardTitle className="text-2xl" style={{ color: totalSpent > totalPlanned ? '#ef4444' : undefined }}>
-                      {formatCurrency(totalSpent)}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardDescription>Remaining</CardDescription>
-                    <CardTitle className="text-2xl" style={{ color: remaining >= 0 ? '#22c55e' : '#ef4444' }}>
-                      {formatCurrency(remaining)}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardDescription>Completed Items</CardDescription>
-                    <CardTitle className="text-2xl">
-                      {completedCount} / {allExpenseItems.length}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
-              </>
-            )
-          })()}
-        </div>
-
-        {/* Overall Budget Progress Bar */}
-        {(() => {
-          const allExpenseItems = categories
-            .filter(cat => cat.type === 'expense')
-            .flatMap(cat => cat.subcategories)
-          
-          const totalPlanned = allExpenseItems.reduce((sum, item) => sum + (item.plannedAmount || 0), 0)
-          const totalSpent = allExpenseItems.reduce((sum, item) => sum + item.actualAmount, 0)
-          const overallPercentage = totalPlanned > 0 ? (totalSpent / totalPlanned) * 100 : 0
-          
-          if (totalPlanned === 0) return null
-          
-          return (
-            <Card>
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Monthly Budget Progress</CardTitle>
-                  <div className="text-2xl font-bold" style={{ 
-                    color: overallPercentage > 100 ? '#ef4444' : overallPercentage >= 90 ? '#f59e0b' : '#22c55e' 
-                  }}>
-                    {overallPercentage.toFixed(1)}%
-                  </div>
-                </div>
-                <div className="mt-4 space-y-2">
-                  <div className="relative">
-                    <Progress 
-                      value={Math.min(overallPercentage, 100)} 
-                      className="h-6"
-                      indicatorStyle={{
-                        backgroundColor: overallPercentage > 100 ? '#ef4444' : overallPercentage >= 90 ? '#f59e0b' : '#3b82f6',
-                      }}
-                    />
-                    {overallPercentage >= 15 && (
-                      <div className="absolute inset-0 flex items-center justify-end pr-2">
-                        <span className="text-xs font-bold text-white drop-shadow">
-                          {formatCurrency(totalSpent)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>Spent: {formatCurrency(totalSpent)}</span>
-                    <span>Budget: {formatCurrency(totalPlanned)}</span>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
-          )
-        })()}
-      </div>
-
-      {/* Pie Charts */}
+      {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Expense Groups Pie Chart */}
+        {/* Income vs Expenses Comparison */}
         {(() => {
-          const expenseGroupsData = categories
-            .filter(cat => cat.type === 'expense')
-            .map(cat => ({
-              name: cat.name,
-              value: cat.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0),
-              color: cat.color,
-            }))
-            .filter(item => item.value > 0)
-            .sort((a, b) => b.value - a.value)
+          const incomeCategories = categories.filter(cat => cat.type === 'income')
+          const expenseCategories = categories.filter(cat => cat.type === 'expense')
+          
+          const totalIncomePlanned = incomeCategories
+            .flatMap(cat => cat.subcategories)
+            .reduce((sum, sub) => sum + (sub.plannedAmount || 0), 0)
+          
+          const totalIncomeActual = incomeCategories
+            .flatMap(cat => cat.subcategories)
+            .reduce((sum, sub) => sum + sub.actualAmount, 0)
+          
+          const totalExpensePlanned = expenseCategories
+            .flatMap(cat => cat.subcategories)
+            .reduce((sum, sub) => sum + (sub.plannedAmount || 0), 0)
+          
+          const totalExpenseActual = expenseCategories
+            .flatMap(cat => cat.subcategories)
+            .reduce((sum, sub) => sum + sub.actualAmount, 0)
 
-          const totalSpent = expenseGroupsData.reduce((sum, item) => sum + item.value, 0)
+          const netPlanned = totalIncomePlanned - totalExpensePlanned
+          const netActual = totalIncomeActual - totalExpenseActual
+          
+          // Waterfall chart data - shows flow from income to expenses to net
+          const createWaterfallData = (income: number, expenses: number, net: number, label: string) => {
+            return [
+              {
+                name: 'Income',
+                value: income,
+                fill: '#22c55e',
+                start: 0,
+                displayValue: income,
+                category: label,
+              },
+              {
+                name: 'Expenses',
+                value: expenses,
+                fill: '#ef4444',
+                start: income - expenses,
+                displayValue: expenses,
+                category: label,
+              },
+              {
+                name: 'Net',
+                value: Math.abs(net),
+                fill: net >= 0 ? '#3b82f6' : '#f59e0b',
+                start: net >= 0 ? 0 : net,
+                displayValue: net,
+                category: label,
+              },
+            ]
+          }
+
+          const plannedWaterfall = createWaterfallData(totalIncomePlanned, totalExpensePlanned, netPlanned, 'Planned')
+          const actualWaterfall = createWaterfallData(totalIncomeActual, totalExpenseActual, netActual, 'Actual')
 
           return (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Spending by Category</CardTitle>
+                <CardTitle className="text-lg">Income vs Expenses</CardTitle>
                 <CardDescription>
-                  {expenseGroupsData.length > 0 
-                    ? `Total spent: ${formatCurrency(totalSpent)}`
-                    : 'No expenses recorded this month'}
+                  Budget flow from income to expenses
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {expenseGroupsData.length > 0 ? (
-                  <>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={expenseGroupsData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => 
-                            percent && percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''
-                          }
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {expenseGroupsData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
+                <div className="space-y-6">
+                  {/* Planned Waterfall */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Planned</h4>
+                    <ResponsiveContainer width="100%" height={120}>
+                      <BarChart data={plannedWaterfall} layout="vertical" margin={{ left: 80, right: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                        <XAxis type="number" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
+                        <YAxis type="category" dataKey="name" />
                         <Tooltip
-                          formatter={(value: any) => formatCurrency(value)}
+                          formatter={(value: any, name: any, props: any) => [
+                            formatCurrency(props.payload.displayValue),
+                            props.payload.name
+                          ]}
                           contentStyle={{
                             backgroundColor: 'rgba(255, 255, 255, 0.95)',
                             border: '1px solid #ccc',
@@ -776,28 +1068,68 @@ export default function PlansPage() {
                             padding: '8px 12px',
                           }}
                         />
-                      </PieChart>
+                        <Bar dataKey="value" stackId="a" radius={[0, 4, 4, 0]}>
+                          {plannedWaterfall.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
                     </ResponsiveContainer>
-                    <div className="mt-4 space-y-2">
-                      {expenseGroupsData.map((item) => (
-                        <div key={item.name} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-3 w-3 rounded-full flex-shrink-0"
-                              style={{ backgroundColor: item.color }}
-                            />
-                            <span className="font-medium">{item.name}</span>
-                          </div>
-                          <span className="font-semibold">{formatCurrency(item.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                    <p>Record some transactions to see spending breakdown</p>
                   </div>
-                )}
+                  
+                  {/* Actual Waterfall */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Actual</h4>
+                    <ResponsiveContainer width="100%" height={120}>
+                      <BarChart data={actualWaterfall} layout="vertical" margin={{ left: 80, right: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                        <XAxis type="number" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
+                        <YAxis type="category" dataKey="name" />
+                        <Tooltip
+                          formatter={(value: any, name: any, props: any) => [
+                            formatCurrency(props.payload.displayValue),
+                            props.payload.name
+                          ]}
+                          contentStyle={{
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            border: '1px solid #ccc',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                          }}
+                        />
+                        <Bar dataKey="value" stackId="a" radius={[0, 4, 4, 0]}>
+                          {actualWaterfall.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Net Planned</span>
+                      <span className="font-semibold" style={{ color: netPlanned >= 0 ? '#22c55e' : '#ef4444' }}>
+                        {formatCurrency(netPlanned)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Net Actual</span>
+                      <span className="font-semibold" style={{ color: netActual >= 0 ? '#22c55e' : '#ef4444' }}>
+                        {formatCurrency(netActual)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Difference</span>
+                      <span className="font-bold" style={{ color: (netActual - netPlanned) >= 0 ? '#22c55e' : '#ef4444' }}>
+                        {formatCurrency(netActual - netPlanned)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )
@@ -889,26 +1221,55 @@ export default function PlansPage() {
         })()}
       </div>
 
-      {/* Expense Groups */}
+      {/* Planning Groups */}
       <div className="space-y-4">
         {categories
-          .filter(group => group.type === 'expense' && group.subcategories.length > 0)
+          .filter(group => group.subcategories.length > 0)
+          .sort((a, b) => {
+            // Sort income groups first, then expenses
+            if (a.type === 'income' && b.type !== 'income') return -1
+            if (a.type !== 'income' && b.type === 'income') return 1
+            return 0
+          })
           .map((group) => {
             const groupPlanned = group.subcategories.reduce((sum, sub) => sum + (sub.plannedAmount || 0), 0)
             const groupSpent = group.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0)
             const groupRemaining = groupPlanned - groupSpent
             const groupPercentage = groupPlanned > 0 ? (groupSpent / groupPlanned) * 100 : (groupSpent > 0 ? 100 : 0)
+            const isCollapsed = collapsedGroups.has(group.id)
             
             return (
               <Card key={group.id}>
-                <CardHeader>
+                <CardHeader className="cursor-pointer" onClick={() => toggleGroupCollapse(group.id)}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 hover:bg-transparent"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleGroupCollapse(group.id)
+                        }}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="h-5 w-5" />
+                        ) : (
+                          <ChevronDown className="h-5 w-5" />
+                        )}
+                      </Button>
                       <div
                         className="h-3 w-3 rounded-full"
                         style={{ backgroundColor: group.color }}
                       />
-                      <CardTitle>{group.name}</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        {group.name}
+                        {group.type === 'income' && (
+                          <Badge variant="outline" className="text-xs font-normal bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">
+                            Income
+                          </Badge>
+                        )}
+                      </CardTitle>
                     </div>
                     <div className="flex items-center gap-4">
                       {groupPlanned > 0 && (
@@ -940,23 +1301,42 @@ export default function PlansPage() {
                       )}
                     </div>
                   </div>
-                  <div className="mt-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Overall Progress</span>
-                      <span className="font-bold">{groupPercentage.toFixed(0)}%</span>
+                  {!isCollapsed && (
+                    <div className="mt-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Overall Progress</span>
+                        <span className="font-bold">{groupPercentage.toFixed(0)}%</span>
+                      </div>
+                      <Progress 
+                        value={Math.min(groupPercentage, 100)} 
+                        className="h-3"
+                        indicatorStyle={{
+                          backgroundColor: groupPercentage > 100 ? '#ef4444' : group.color,
+                        }}
+                      />
                     </div>
-                    <Progress 
-                      value={Math.min(groupPercentage, 100)} 
-                      className="h-3"
-                      indicatorStyle={{
-                        backgroundColor: groupPercentage > 100 ? '#ef4444' : group.color,
-                      }}
-                    />
-                  </div>
+                  )}
                 </CardHeader>
-                <CardContent>
+                {!isCollapsed && (
+                  <CardContent>
                   <div className="space-y-3">
                     {group.subcategories
+                      .sort((a, b) => {
+                        // Get the end of the current month as default date for items without due date
+                        const endOfMonth = new Date(currentYear, currentMonth, 0).getTime()
+                        
+                        // Convert due dates to timestamps, using end of month if null/undefined
+                        const dateA = a.dueDate ? new Date(a.dueDate).getTime() : endOfMonth
+                        const dateB = b.dueDate ? new Date(b.dueDate).getTime() : endOfMonth
+                        
+                        // Sort by date first
+                        if (dateA !== dateB) {
+                          return dateA - dateB
+                        }
+                        
+                        // If dates are equal, sort by name alphabetically
+                        return a.name.localeCompare(b.name)
+                      })
                       .map((item) => {
                         const completionPercentage = item.plannedAmount > 0 
                           ? (item.actualAmount / item.plannedAmount) * 100 
@@ -1046,6 +1426,7 @@ export default function PlansPage() {
                       })}
                   </div>
                 </CardContent>
+                )}
               </Card>
             )
           })}

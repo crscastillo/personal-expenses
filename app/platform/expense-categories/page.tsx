@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Loader2, Trash2 } from 'lucide-react'
+import { Plus, Loader2, Trash2, GripVertical } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,18 @@ import {
 } from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 
 type ExpenseGroup = {
   id: string
@@ -58,6 +70,118 @@ type ExpenseCategory = {
   group?: ExpenseGroup
 }
 
+// Draggable Category Component
+function DraggableCategory({ 
+  category, 
+  onClick 
+}: { 
+  category: ExpenseCategory
+  onClick: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: category.id,
+  })
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`rounded-lg border p-4 transition-all cursor-move hover:shadow-md hover:border-primary/50 ${
+        isDragging ? 'shadow-lg ring-2 ring-primary' : ''
+      }`}
+      {...attributes}
+      {...listeners}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2 flex-1 min-w-0">
+          <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-base mb-1">{category.name}</h3>
+            {category.description && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {category.description}
+              </p>
+            )}
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 flex-shrink-0"
+          onClick={(e) => {
+            e.stopPropagation()
+            onClick()
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span className="text-xs">Edit</span>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// Droppable Group Component
+function DroppableGroup({ 
+  group, 
+  categories: groupCategories,
+  onEditCategory
+}: { 
+  group: ExpenseGroup
+  categories: ExpenseCategory[]
+  onEditCategory: (category: ExpenseCategory) => void
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: group.id,
+  })
+
+  return (
+    <Card key={group.id}>
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <div
+            className="h-4 w-4 rounded-full flex-shrink-0"
+            style={{ backgroundColor: group.color }}
+          />
+          <div>
+            <CardTitle>{group.name}</CardTitle>
+            <CardDescription>
+              {groupCategories.length} {groupCategories.length === 1 ? 'category' : 'categories'}
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent
+        ref={setNodeRef}
+        className={`min-h-[100px] transition-colors ${
+          isOver ? 'bg-primary/5 ring-2 ring-primary ring-inset' : ''
+        }`}
+      >
+        <div className="space-y-3">
+          {groupCategories.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              {isOver ? 'Drop category here' : 'Drag categories here'}
+            </div>
+          ) : (
+            groupCategories.map((category) => (
+              <DraggableCategory
+                key={category.id}
+                category={category}
+                onClick={() => onEditCategory(category)}
+              />
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function ExpenseCategoriesPage() {
   const supabase = createClient()
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
@@ -68,11 +192,21 @@ export default function ExpenseCategoriesPage() {
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isLargeScreen, setIsLargeScreen] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<ExpenseCategory | null>(null)
   
   // Form state
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [expenseGroupId, setExpenseGroupId] = useState('')
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required before drag starts
+      },
+    })
+  )
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -222,12 +356,7 @@ export default function ExpenseCategoriesPage() {
     }
   }
 
-  const handleDeleteCategory = async (id: string, isCustom: boolean, categoryName: string) => {
-    if (!isCustom) {
-      toast.error('Default categories cannot be deleted')
-      return
-    }
-    
+  const handleDeleteCategory = async (id: string, categoryName: string) => {
     if (!confirm(`Are you sure you want to delete "${categoryName}"? This may affect your transactions and plan data.`)) {
       return
     }
@@ -266,6 +395,52 @@ export default function ExpenseCategoriesPage() {
     resetForm()
   }
 
+  // Drag and drop handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    const category = categories.find(cat => cat.id === event.active.id)
+    setActiveCategory(category || null)
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveCategory(null)
+
+    if (!over || active.id === over.id) return
+
+    const categoryId = active.id as string
+    const newGroupId = over.id as string
+
+    const category = categories.find(cat => cat.id === categoryId)
+    if (!category || category.expense_group_id === newGroupId) return
+
+    try {
+      // Optimistically update UI
+      setCategories(prevCategories =>
+        prevCategories.map(cat =>
+          cat.id === categoryId
+            ? { ...cat, expense_group_id: newGroupId }
+            : cat
+        )
+      )
+
+      // Update database
+      const { error } = await supabase
+        .from('expense_categories')
+        .update({ expense_group_id: newGroupId })
+        .eq('id', categoryId)
+
+      if (error) throw error
+
+      const newGroup = groups.find(g => g.id === newGroupId)
+      toast.success(`Moved "${category.name}" to ${newGroup?.name}`)
+    } catch (error) {
+      console.error('Error moving category:', error)
+      toast.error('Failed to move category')
+      // Revert optimistic update
+      await loadData()
+    }
+  }
+
   // Group categories by expense group
   const groupedCategories = groups.map(group => ({
     group,
@@ -277,14 +452,20 @@ export default function ExpenseCategoriesPage() {
       <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
     </div>
   ) : (
-    <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Expense Categories</h1>
-          <p className="text-sm text-muted-foreground md:text-base">
-            Manage categories within your expense groups
-          </p>
-        </div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="space-y-4 md:space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Expense Categories</h1>
+            <p className="text-sm text-muted-foreground md:text-base">
+              Manage categories within your expense groups
+            </p>
+          </div>
         
         {/* Add Category Button with Dialog/Drawer */}
         {isLargeScreen ? (
@@ -458,19 +639,11 @@ export default function ExpenseCategoriesPage() {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Categories</CardDescription>
             <CardTitle className="text-2xl">{categories.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Custom Categories</CardDescription>
-            <CardTitle className="text-2xl">
-              {categories.filter(cat => cat.is_custom).length}
-            </CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -494,44 +667,12 @@ export default function ExpenseCategoriesPage() {
           </Card>
         ) : (
           groupedCategories.map(({ group, categories: groupCategories }) => (
-            <Card key={group.id}>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div
-                    className="h-4 w-4 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: group.color }}
-                  />
-                  <div>
-                    <CardTitle>{group.name}</CardTitle>
-                    <CardDescription>
-                      {groupCategories.length} {groupCategories.length === 1 ? 'category' : 'categories'}
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {groupCategories.map((category) => (
-                    <div
-                      key={category.id}
-                      onClick={() => handleEditCategory(category)}
-                      className="rounded-lg border p-4 transition-all cursor-pointer hover:shadow-md hover:border-primary/50 active:scale-[0.98]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-base mb-1">{category.name}</h3>
-                          {category.description && (
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {category.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <DroppableGroup
+              key={group.id}
+              group={group}
+              categories={groupCategories}
+              onEditCategory={handleEditCategory}
+            />
           ))
         )}
       </div>
@@ -619,9 +760,9 @@ export default function ExpenseCategoriesPage() {
                     <Button 
                       variant="destructive" 
                       className="h-12" 
-                      onClick={() => handleDeleteCategory(editingCategory.id, editingCategory.is_custom, editingCategory.name)}
-                      disabled={!editingCategory.is_custom || isSaving}
-                      title={!editingCategory.is_custom ? 'Default category cannot be deleted' : 'Delete this category'}
+                      onClick={() => handleDeleteCategory(editingCategory.id, editingCategory.name)}
+                      disabled={isSaving}
+                      title="Delete this category"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Delete
@@ -716,9 +857,9 @@ export default function ExpenseCategoriesPage() {
                         <Button 
                           variant="destructive" 
                           className="h-12" 
-                          onClick={() => handleDeleteCategory(editingCategory.id, editingCategory.is_custom, editingCategory.name)}
-                          disabled={!editingCategory.is_custom || isSaving}
-                          title={!editingCategory.is_custom ? 'Default category cannot be deleted' : 'Delete this category'}
+                          onClick={() => handleDeleteCategory(editingCategory.id, editingCategory.name)}
+                          disabled={isSaving}
+                          title="Delete this category"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete
@@ -732,6 +873,26 @@ export default function ExpenseCategoriesPage() {
           </DrawerContent>
         </Drawer>
       )}
-    </div>
+      </div>
+      
+      {/* Drag Overlay */}
+      <DragOverlay>
+        {activeCategory ? (
+          <div className="rounded-lg border p-4 bg-background shadow-xl cursor-grabbing opacity-90">
+            <div className="flex items-start gap-2">
+              <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-base">{activeCategory.name}</h3>
+                {activeCategory.description && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {activeCategory.description}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   )
 }

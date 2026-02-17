@@ -32,51 +32,51 @@ export async function seedDefaultExpenseGroups(userId: string) {
   // Create user-specific expense categories based on Ramit Sethi's Conscious Spending Plan
   const expenseCategories = [
     // Income categories
-    { expense_group_id: groupMap['Income'], user_id: userId, name: 'Salary/Wages', description: 'Primary income from employment', is_custom: false },
-    { expense_group_id: groupMap['Income'], user_id: userId, name: 'Side Hustle', description: 'Freelance, consulting, gig work', is_custom: false },
-    { expense_group_id: groupMap['Income'], user_id: userId, name: 'Bonuses', description: 'Work bonuses and commissions', is_custom: false },
-    { expense_group_id: groupMap['Income'], user_id: userId, name: 'Gifts/Other', description: 'Gifts and miscellaneous income', is_custom: false },
+    { expense_group_id: groupMap['Income'], user_id: userId, name: 'Salary/Wages', description: 'Primary income from employment', is_custom: true },
+    { expense_group_id: groupMap['Income'], user_id: userId, name: 'Side Hustle', description: 'Freelance, consulting, gig work', is_custom: true },
+    { expense_group_id: groupMap['Income'], user_id: userId, name: 'Bonuses', description: 'Work bonuses and commissions', is_custom: true },
+    { expense_group_id: groupMap['Income'], user_id: userId, name: 'Gifts/Other', description: 'Gifts and miscellaneous income', is_custom: true },
 
     // Fixed Costs categories (50-60% of take-home pay)
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Rent/Mortgage', description: 'Monthly housing payment', is_custom: false },
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Utilities', description: 'Electric, gas, water, trash', is_custom: false },
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Internet/Phone', description: 'Internet and cell phone', is_custom: false },
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Groceries', description: 'Food and household essentials', is_custom: false },
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Transportation', description: 'Car payment, gas, public transit', is_custom: false },
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Insurance', description: 'Health, auto, life, renters/home', is_custom: false },
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Debt Payments', description: 'Student loans, credit cards, other debt', is_custom: false },
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Childcare', description: 'Daycare, nanny, after-school care', is_custom: false },
-    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Subscriptions', description: 'Essential subscriptions (not entertainment)', is_custom: false },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Rent/Mortgage', description: 'Monthly housing payment', is_custom: true },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Utilities', description: 'Electric, gas, water, trash', is_custom: true },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Internet/Phone', description: 'Internet and cell phone', is_custom: true },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Groceries', description: 'Food and household essentials', is_custom: true },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Transportation', description: 'Car payment, gas, public transit', is_custom: true },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Insurance', description: 'Health, auto, life, renters/home', is_custom: true },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Debt Payments', description: 'Student loans, credit cards, other debt', is_custom: true },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Childcare', description: 'Daycare, nanny, after-school care', is_custom: true },
+    { expense_group_id: groupMap['Fixed Costs'], user_id: userId, name: 'Subscriptions', description: 'Essential subscriptions (not entertainment)', is_custom: true },
 
     // Investments categories (10% of take-home pay)
-    { expense_group_id: groupMap['Investments'], user_id: userId, name: '401(k)', description: 'Employer-sponsored 401k', is_custom: false },
-    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'Roth IRA', description: 'After-tax retirement account', is_custom: false },
-    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'Traditional IRA', description: 'Pre-tax retirement account', is_custom: false },
-    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'Taxable Brokerage', description: 'Non-retirement investment account', is_custom: false },
-    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'HSA', description: 'Health Savings Account', is_custom: false },
-    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'SEP IRA', description: 'Self-employed retirement', is_custom: false },
+    { expense_group_id: groupMap['Investments'], user_id: userId, name: '401(k)', description: 'Employer-sponsored 401k', is_custom: true },
+    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'Roth IRA', description: 'After-tax retirement account', is_custom: true },
+    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'Traditional IRA', description: 'Pre-tax retirement account', is_custom: true },
+    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'Taxable Brokerage', description: 'Non-retirement investment account', is_custom: true },
+    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'HSA', description: 'Health Savings Account', is_custom: true },
+    { expense_group_id: groupMap['Investments'], user_id: userId, name: 'SEP IRA', description: 'Self-employed retirement', is_custom: true },
 
     // Savings categories (5-10% of take-home pay)
-    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Emergency Fund', description: '3-6 months of expenses', is_custom: false },
-    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Vacation Fund', description: 'Travel and trips', is_custom: false },
-    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'House Down Payment', description: 'Saving for home purchase', is_custom: false },
-    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Car/Large Purchase', description: 'Vehicle or major purchase', is_custom: false },
-    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Wedding', description: 'Wedding expenses', is_custom: false },
-    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Education', description: 'Future education costs', is_custom: false },
-    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Other Goals', description: 'Other specific savings goals', is_custom: false },
+    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Emergency Fund', description: '3-6 months of expenses', is_custom: true },
+    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Vacation Fund', description: 'Travel and trips', is_custom: true },
+    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'House Down Payment', description: 'Saving for home purchase', is_custom: true },
+    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Car/Large Purchase', description: 'Vehicle or major purchase', is_custom: true },
+    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Wedding', description: 'Wedding expenses', is_custom: true },
+    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Education', description: 'Future education costs', is_custom: true },
+    { expense_group_id: groupMap['Savings'], user_id: userId, name: 'Other Goals', description: 'Other specific savings goals', is_custom: true },
 
     // Guilt-Free Spending categories (20-35% of take-home pay)
-    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Dining Out', description: 'Restaurants, bars, coffee shops', is_custom: false },
-    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Entertainment', description: 'Movies, concerts, shows, events', is_custom: false },
-    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Shopping', description: 'Clothes, gadgets, home decor', is_custom: false },
-    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Hobbies', description: 'Sports, crafts, collections', is_custom: false },
-    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Gym/Fitness', description: 'Gym membership, classes, sports', is_custom: false },
-    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Personal Care', description: 'Haircuts, spa, beauty', is_custom: false },
-    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Subscriptions', description: 'Netflix, Spotify, fun subscriptions', is_custom: false },
-    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Fun Money', description: 'Whatever you want, no guilt!', is_custom: false },
+    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Dining Out', description: 'Restaurants, bars, coffee shops', is_custom: true },
+    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Entertainment', description: 'Movies, concerts, shows, events', is_custom: true },
+    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Shopping', description: 'Clothes, gadgets, home decor', is_custom: true },
+    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Hobbies', description: 'Sports, crafts, collections', is_custom: true },
+    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Gym/Fitness', description: 'Gym membership, classes, sports', is_custom: true },
+    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Personal Care', description: 'Haircuts, spa, beauty', is_custom: true },
+    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Subscriptions', description: 'Netflix, Spotify, fun subscriptions', is_custom: true },
+    { expense_group_id: groupMap['Guilt-Free Spending'], user_id: userId, name: 'Fun Money', description: 'Whatever you want, no guilt!', is_custom: true },
 
     // Misc categories
-    { expense_group_id: groupMap['Misc'], user_id: userId, name: 'Untracked', description: 'Uncategorized transactions', is_custom: false },
+    { expense_group_id: groupMap['Misc'], user_id: userId, name: 'Untracked', description: 'Uncategorized transactions', is_custom: true },
   ]
 
   const { data: insertedCategories, error: catError } = await supabase
