@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Calendar, Copy, ChevronLeft, ChevronRight, CheckCircle2, ChevronDown, ChevronUp, List, LayoutGrid } from 'lucide-react'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { getMonthName, getCurrentMonth, getCurrentYear, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -31,6 +32,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Calculator } from '@/components/calculator'
 import { Progress } from '@/components/ui/progress'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 // Type definitions
 type Subcategory = {
@@ -59,6 +61,12 @@ const categoryColors: Record<string, string> = {
   'Fixed Costs': '#ef4444',
   'Guilt-Free Spending': '#f59e0b',
   'Misc': '#6b7280',
+}
+
+// Helper function to parse date string in local timezone (avoids UTC conversion issues)
+const parseLocalDate = (dateString: string): Date => {
+  const [year, month, day] = dateString.split('-').map(Number)
+  return new Date(year, month - 1, day)
 }
 
 export default function PlansPage() {
@@ -90,16 +98,27 @@ export default function PlansPage() {
   
   // Collapsed groups state
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  
+  // View mode state - default to table on large screens, list on small
+  const [viewMode, setViewMode] = useState<'list' | 'table'>(
+    typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'table' : 'list'
+  )
 
   useEffect(() => {
     const checkScreenSize = () => {
-      setIsLargeScreen(window.innerWidth >= 1024) // lg breakpoint
+      const isLarge = window.innerWidth >= 1024 // lg breakpoint
+      setIsLargeScreen(isLarge)
+      
+      // Force list view on small screens
+      if (!isLarge && viewMode === 'table') {
+        setViewMode('list')
+      }
     }
     
     checkScreenSize()
     window.addEventListener('resize', checkScreenSize)
     return () => window.removeEventListener('resize', checkScreenSize)
-  }, [])
+  }, [viewMode])
 
   useEffect(() => {
     loadPlanData()
@@ -664,6 +683,27 @@ export default function PlansPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* View mode toggle - hidden on small screens */}
+          <div className="hidden lg:flex items-center gap-2 border rounded-lg p-1">
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('list')}
+              className="h-8 px-3"
+            >
+              <List className="h-4 w-4 mr-1" />
+              List
+            </Button>
+            <Button
+              variant={viewMode === 'table' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('table')}
+              className="h-8 px-3"
+            >
+              <LayoutGrid className="h-4 w-4 mr-1" />
+              Table
+            </Button>
+          </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" onClick={previousMonth}>
               <ChevronLeft className="h-4 w-4" />
@@ -1222,16 +1262,193 @@ export default function PlansPage() {
       </div>
 
       {/* Planning Groups */}
-      <div className="space-y-4">
-        {categories
-          .filter(group => group.subcategories.length > 0)
-          .sort((a, b) => {
-            // Sort income groups first, then expenses
-            if (a.type === 'income' && b.type !== 'income') return -1
-            if (a.type !== 'income' && b.type === 'income') return 1
-            return 0
-          })
-          .map((group) => {
+      {viewMode === 'table' && isLargeScreen ? (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[250px]">Category</TableHead>
+                  <TableHead className="w-[120px]">Due Date</TableHead>
+                  <TableHead className="text-right w-[120px]">Planned</TableHead>
+                  <TableHead className="text-right w-[120px]">Spent</TableHead>
+                  <TableHead className="text-right w-[120px]">Remaining</TableHead>
+                  <TableHead className="w-[100px]">Status</TableHead>
+                  <TableHead className="w-[150px]">Progress</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {categories
+                  .filter(group => group.subcategories.length > 0)
+                  .sort((a, b) => {
+                    if (a.type === 'income' && b.type !== 'income') return -1
+                    if (a.type !== 'income' && b.type === 'income') return 1
+                    return 0
+                  })
+                  .map((group) => {
+                    const groupPlanned = group.subcategories.reduce((sum, sub) => sum + (sub.plannedAmount || 0), 0)
+                    const groupSpent = group.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0)
+                    const groupRemaining = groupPlanned - groupSpent
+                    const isCollapsed = collapsedGroups.has(group.id)
+
+                    return (
+                      <React.Fragment key={group.id}>
+                        {/* Group Header Row */}
+                        <TableRow 
+                          className="bg-muted/50 hover:bg-muted/70 cursor-pointer"
+                          onClick={() => toggleGroupCollapse(group.id)}
+                        >
+                          <TableCell colSpan={7} className="font-semibold">
+                            <div className="flex items-center justify-between py-1">
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 hover:bg-transparent"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleGroupCollapse(group.id)
+                                  }}
+                                >
+                                  {isCollapsed ? (
+                                    <ChevronRight className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <div
+                                  className="h-3 w-3 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: group.color }}
+                                />
+                                <span>{group.name}</span>
+                                {group.type === 'income' && (
+                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                    Income
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-6 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-muted-foreground">Planned:</span>
+                                  <span>{formatCurrency(groupPlanned)}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-muted-foreground">Spent:</span>
+                                  <span style={{ color: group.color }}>{formatCurrency(groupSpent)}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-muted-foreground">Remaining:</span>
+                                  <span style={{ color: groupRemaining >= 0 ? '#22c55e' : '#ef4444' }}>
+                                    {formatCurrency(groupRemaining)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        
+                        {/* Group Items */}
+                        {!isCollapsed && group.subcategories
+                          .sort((a, b) => {
+                            const endOfMonth = new Date(currentYear, currentMonth, 0).getTime()
+                            const dateA = a.dueDate ? parseLocalDate(a.dueDate).getTime() : endOfMonth
+                            const dateB = b.dueDate ? parseLocalDate(b.dueDate).getTime() : endOfMonth
+                            if (dateA !== dateB) return dateA - dateB
+                            return a.name.localeCompare(b.name)
+                          })
+                          .map((item) => {
+                            const completionPercentage = item.plannedAmount > 0 
+                              ? (item.actualAmount / item.plannedAmount) * 100 
+                              : (item.actualAmount > 0 ? 100 : 0)
+                            const isOverBudget = item.actualAmount > (item.plannedAmount || 0)
+                            const isComplete = item.isCompleted || completionPercentage >= 100
+                            const remaining = (item.plannedAmount || 0) - item.actualAmount
+
+                            return (
+                              <TableRow 
+                                key={item.id}
+                                className="cursor-pointer hover:bg-muted/50"
+                                onClick={() => handleEditItem(group.id, item)}
+                              >
+                                <TableCell className="font-medium pl-8">{item.name}</TableCell>
+                                <TableCell>
+                                  {item.dueDate ? (
+                                    <span className="text-sm">
+                                      {parseLocalDate(item.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </span>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  {formatCurrency(item.plannedAmount || 0)}
+                                </TableCell>
+                                <TableCell className="text-right font-semibold" style={{
+                                  color: isOverBudget ? '#ef4444' : isComplete ? '#22c55e' : undefined
+                                }}>
+                                  {formatCurrency(item.actualAmount)}
+                                </TableCell>
+                                <TableCell className="text-right font-semibold" style={{
+                                  color: remaining >= 0 ? '#22c55e' : '#ef4444'
+                                }}>
+                                  {formatCurrency(remaining)}
+                                </TableCell>
+                                <TableCell>
+                                  {isComplete ? (
+                                    <Badge className="bg-green-600 hover:bg-green-700">
+                                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                                      Complete
+                                    </Badge>
+                                  ) : isOverBudget ? (
+                                    <Badge variant="destructive">
+                                      Over Budget
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline">
+                                      In Progress
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="space-y-1">
+                                    <div className="text-xs font-medium">{completionPercentage.toFixed(0)}%</div>
+                                    <Progress 
+                                      value={Math.min(completionPercentage, 100)} 
+                                      className="h-2"
+                                      indicatorStyle={{
+                                        backgroundColor: isOverBudget ? '#ef4444' : (isComplete ? '#22c55e' : group.color),
+                                      }}
+                                    />
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                      </React.Fragment>
+                    )
+                  })}
+                {categories.flatMap(cat => cat.subcategories).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                      No plan items found. Add some categories to start budgeting.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {categories
+            .filter(group => group.subcategories.length > 0)
+            .sort((a, b) => {
+              // Sort income groups first, then expenses
+              if (a.type === 'income' && b.type !== 'income') return -1
+              if (a.type !== 'income' && b.type === 'income') return 1
+              return 0
+            })
+            .map((group) => {
             const groupPlanned = group.subcategories.reduce((sum, sub) => sum + (sub.plannedAmount || 0), 0)
             const groupSpent = group.subcategories.reduce((sum, sub) => sum + sub.actualAmount, 0)
             const groupRemaining = groupPlanned - groupSpent
@@ -1326,8 +1543,8 @@ export default function PlansPage() {
                         const endOfMonth = new Date(currentYear, currentMonth, 0).getTime()
                         
                         // Convert due dates to timestamps, using end of month if null/undefined
-                        const dateA = a.dueDate ? new Date(a.dueDate).getTime() : endOfMonth
-                        const dateB = b.dueDate ? new Date(b.dueDate).getTime() : endOfMonth
+                        const dateA = a.dueDate ? parseLocalDate(a.dueDate).getTime() : endOfMonth
+                        const dateB = b.dueDate ? parseLocalDate(b.dueDate).getTime() : endOfMonth
                         
                         // Sort by date first
                         if (dateA !== dateB) {
@@ -1360,7 +1577,7 @@ export default function PlansPage() {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     {item.dueDate && (
                                       <Badge variant="outline" className="text-xs">
-                                        Due: {new Date(item.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                        Due: {parseLocalDate(item.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                       </Badge>
                                     )}
                                     {isComplete && (
@@ -1430,18 +1647,19 @@ export default function PlansPage() {
               </Card>
             )
           })}
-        {categories
-          .filter(cat => cat.type === 'expense')
-          .flatMap(cat => cat.subcategories).length === 0 && (
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center text-muted-foreground">
-                <p>No expense categories found. Add some categories to start budgeting.</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+          {categories
+            .filter(cat => cat.type === 'expense')
+            .flatMap(cat => cat.subcategories).length === 0 && (
+            <Card>
+              <CardContent className="py-12">
+                <div className="text-center text-muted-foreground">
+                  <p>No expense categories found. Add some categories to start budgeting.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Edit Plan Item Dialog/Drawer */}
       {isLargeScreen ? (
