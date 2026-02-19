@@ -455,6 +455,49 @@ export default function PlansPage() {
     }
   }
 
+  const handleToggleComplete = async (groupId: string, item: Subcategory) => {
+    if (!item.planItemId) return // Can't toggle if no plan item exists
+    
+    const newCompletedStatus = !item.isCompleted
+
+    try {
+      // Update in database
+      const { error } = await supabase
+        .from('plan_items')
+        .update({
+          is_completed: newCompletedStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', item.planItemId)
+
+      if (error) throw error
+
+      // Update state optimistically
+      setCategories(prevCategories =>
+        prevCategories.map(group => {
+          if (group.id === groupId) {
+            return {
+              ...group,
+              subcategories: group.subcategories.map(sub => {
+                if (sub.id === item.id) {
+                  return {
+                    ...sub,
+                    isCompleted: newCompletedStatus,
+                  }
+                }
+                return sub
+              })
+            }
+          }
+          return group
+        })
+      )
+    } catch (error) {
+      console.error('Error toggling completion status:', error)
+      alert('Failed to update status. Please try again.')
+    }
+  }
+
   const handleCancelEdit = () => {
     setIsEditDialogOpen(false)
     setEditingItem(null)
@@ -1395,7 +1438,13 @@ export default function PlansPage() {
                                 </TableCell>
                                 <TableCell>
                                   {isComplete ? (
-                                    <Badge className="bg-green-600 hover:bg-green-700">
+                                    <Badge 
+                                      className="bg-green-600 hover:bg-green-700 cursor-pointer transition-all"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleToggleComplete(group.id, item)
+                                      }}
+                                    >
                                       <CheckCircle2 className="h-3 w-3 mr-1" />
                                       Complete
                                     </Badge>
@@ -1404,7 +1453,14 @@ export default function PlansPage() {
                                       Over Budget
                                     </Badge>
                                   ) : (
-                                    <Badge variant="outline">
+                                    <Badge 
+                                      variant="outline"
+                                      className="cursor-pointer hover:bg-muted transition-all"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleToggleComplete(group.id, item)
+                                      }}
+                                    >
                                       In Progress
                                     </Badge>
                                   )}

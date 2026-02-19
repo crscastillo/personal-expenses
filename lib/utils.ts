@@ -13,11 +13,21 @@ export function formatCurrency(amount: number, currency: string = 'USD'): string
 }
 
 export function formatDate(date: string | Date): string {
+  if (!date) return ''
+  
+  const dateObj = typeof date === 'string' ? new Date(date + 'T00:00:00') : date
+  
+  // Check if date is valid
+  if (isNaN(dateObj.getTime())) {
+    console.error('Invalid date:', date)
+    return String(date)
+  }
+  
   return new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  }).format(new Date(date))
+  }).format(dateObj)
 }
 
 export function getMonthName(month: number): string {

@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Search, Filter, Download, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Upload, AlertCircle, CheckCircle2, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Search, Filter, Download, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Upload, AlertCircle, CheckCircle2, Trash2, ChevronDown, ChevronUp, MoreVertical, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Calculator } from '@/components/calculator'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, getMonthName, getCurrentMonth, getCurrentYear } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
   Dialog,
@@ -29,6 +29,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -47,12 +54,15 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
   const [subcategories, setSubcategories] = useState<any[]>([])
+  const [expenseGroups, setExpenseGroups] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAccount, setSelectedAccount] = useState(accountFilter || 'all')
   const [sortColumn, setSortColumn] = useState<'date' | 'description' | 'category' | 'account' | 'amount'>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [isLargeScreen, setIsLargeScreen] = useState(false)
+  const [currentMonth, setCurrentMonth] = useState(getCurrentMonth())
+  const [currentYear, setCurrentYear] = useState(getCurrentYear())
   
   // Add transaction form state
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -81,6 +91,7 @@ export default function TransactionsPage() {
   const [importSummary, setImportSummary] = useState<{
     imported: number
     duplicates: number
+    skipped: number
     total: number
     transactions: any[]
   } | null>(null)
@@ -89,6 +100,7 @@ export default function TransactionsPage() {
   const [previewTransactions, setPreviewTransactions] = useState<any[]>([])
   const [dateFormat, setDateFormat] = useState<'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD'>('MM/DD/YYYY')
   const [qifFileContent, setQifFileContent] = useState<string>('')
+  const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -199,14 +211,22 @@ export default function TransactionsPage() {
         .eq('is_active', true)
         .order('name')
 
+      // Load expense groups
+      const { data: expenseGroupsData } = await supabase
+        .from('expense_groups')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('sort_order')
+
       // Load expense categories with their groups
       const { data: expenseCategoriesData } = await supabase
         .from('expense_categories')
-        .select('*, group:expense_groups(name)')
+        .select('*, group:expense_groups(name, id)')
         .eq('user_id', user.id)
         .order('name')
 
       setAccounts(accountsData || [])
+      setExpenseGroups(expenseGroupsData || [])
       setSubcategories(expenseCategoriesData || [])
     } catch (error) {
       console.error('Error loading accounts and subcategories:', error)
@@ -338,7 +358,12 @@ export default function TransactionsPage() {
       // Compare trimmed account names
       const matchesAccount = selectedAccount === 'all' || t.account.trim() === selectedAccount.trim()
       
-      return matchesSearch && matchesAccount
+      // Month filter
+      const transactionDate = new Date(t.date)
+      const matchesMonth = transactionDate.getMonth() + 1 === currentMonth && 
+                          transactionDate.getFullYear() === currentYear
+      
+      return matchesSearch && matchesAccount && matchesMonth
     })
     .sort((a, b) => {
       let comparison = 0
@@ -363,6 +388,24 @@ export default function TransactionsPage() {
       
       return sortDirection === 'asc' ? comparison : -comparison
     })
+
+  const nextMonth = () => {
+    if (currentMonth === 12) {
+      setCurrentMonth(1)
+      setCurrentYear(currentYear + 1)
+    } else {
+      setCurrentMonth(currentMonth + 1)
+    }
+  }
+
+  const previousMonth = () => {
+    if (currentMonth === 1) {
+      setCurrentMonth(12)
+      setCurrentYear(currentYear - 1)
+    } else {
+      setCurrentMonth(currentMonth - 1)
+    }
+  }
 
   const handleEditTransaction = async (transaction: any) => {
     setEditingTransaction(transaction)
@@ -507,6 +550,49 @@ export default function TransactionsPage() {
     setEditedReference('')
   }
 
+  const handleToggleTransaction = (transactionId: string) => {
+    setSelectedTransactions(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(transactionId)) {
+        newSet.delete(transactionId)
+      } else {
+        newSet.add(transactionId)
+      }
+      return newSet
+    })
+  }
+
+  const handleToggleAllTransactions = () => {
+    if (selectedTransactions.size === filteredAndSortedTransactions.length) {
+      setSelectedTransactions(new Set())
+    } else {
+      setSelectedTransactions(new Set(filteredAndSortedTransactions.map(t => t.id)))
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedTransactions.size === 0) return
+
+    const confirmMessage = `Are you sure you want to delete ${selectedTransactions.size} transaction(s)? This action cannot be undone.`
+    if (!confirm(confirmMessage)) return
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .in('id', Array.from(selectedTransactions))
+
+      if (error) throw error
+
+      // Clear selection and reload
+      setSelectedTransactions(new Set())
+      await loadTransactions()
+    } catch (error) {
+      console.error('Error deleting transactions:', error)
+      alert('Error deleting transactions. Please try again.')
+    }
+  }
+
   const parseQIFContent = (text: string, format: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' = 'MM/DD/YYYY'): any[] => {
     const transactions: any[] = []
     
@@ -556,6 +642,18 @@ export default function TransactionsPage() {
               if (year.length === 2) {
                 year = parseInt(year) > 50 ? '19' + year : '20' + year
               }
+              
+              // Convert to numbers for validation
+              const monthNum = parseInt(month)
+              const dayNum = parseInt(day)
+              const yearNum = parseInt(year)
+              
+              // Validate date ranges
+              if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31 || yearNum < 1900 || yearNum > 2100) {
+                console.warn(`Invalid date detected: ${value} (parsed as ${year}-${month}-${day}). Check date format setting.`)
+                break
+              }
+              
               month = month.padStart(2, '0')
               day = day.padStart(2, '0')
               currentTransaction.date = `${year}-${month}-${day}`
@@ -590,6 +688,70 @@ export default function TransactionsPage() {
     return transactions
   }
 
+  const parseOFXContent = (text: string): any[] => {
+    const transactions: any[] = []
+    
+    try {
+      // OFX can be SGML or XML format
+      // Extract transaction statements (STMTTRN blocks)
+      const stmtTrnRegex = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/g
+      let match
+      
+      while ((match = stmtTrnRegex.exec(text)) !== null) {
+        const trnBlock = match[1]
+        
+        // Extract fields from transaction block
+        const getField = (fieldName: string): string | null => {
+          const fieldRegex = new RegExp(`<${fieldName}>([^<\n]+)`)
+          const fieldMatch = trnBlock.match(fieldRegex)
+          return fieldMatch ? fieldMatch[1].trim() : null
+        }
+        
+        // Parse date (format: YYYYMMDD or YYYYMMDDHHMMSS)
+        const dtPosted = getField('DTPOSTED')
+        let date = ''
+        if (dtPosted) {
+          const dateStr = dtPosted.substring(0, 8) // Get YYYYMMDD part
+          const year = dateStr.substring(0, 4)
+          const month = dateStr.substring(4, 6)
+          const day = dateStr.substring(6, 8)
+          date = `${year}-${month}-${day}`
+        }
+        
+        // Parse amount
+        const trnAmt = getField('TRNAMT')
+        const amount = trnAmt ? parseFloat(trnAmt) : 0
+        
+        // Parse description (try NAME first, then MEMO)
+        let description = getField('NAME') || getField('MEMO') || 'Unknown'
+        
+        // Add memo if both exist
+        const name = getField('NAME')
+        const memo = getField('MEMO')
+        if (name && memo && name !== memo) {
+          description = `${name} - ${memo}`
+        }
+        
+        // Parse reference number
+        const checkNum = getField('CHECKNUM') || getField('REFNUM')
+        
+        if (date && description) {
+          transactions.push({
+            date,
+            amount,
+            description,
+            checkNumber: checkNum || undefined
+          })
+        }
+      }
+      
+      return transactions
+    } catch (error) {
+      console.error('Error parsing OFX:', error)
+      throw new Error('Invalid OFX format')
+    }
+  }
+
   const isDuplicate = (newTrans: any, existingTrans: any): boolean => {
     // Check if transactions match on date, amount, and description
     return (
@@ -599,7 +761,146 @@ export default function TransactionsPage() {
     )
   }
 
-  const handleImportQIF = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Auto-categorize transactions based on description patterns
+  const autoCategorizTransaction = (description: string): { categoryId: string | null, categoryName: string, subcategoryName: string } => {
+    const desc = description.toLowerCase().trim()
+    
+    // Helper function to extract merchant name from description
+    const extractMerchantName = (text: string): string => {
+      return text
+        .toLowerCase()
+        .replace(/\\/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/\b\d+\b/g, '') // Remove standalone numbers
+        .replace(/\b(inc|llc|ltd|corp|co|the|and|at|in|on|de|del|la|el)\b/gi, '')
+        .trim()
+        .split(/\s+/)
+        .slice(0, 3) // Take first 3 words as merchant identifier
+        .join(' ')
+    }
+    
+    const currentMerchant = extractMerchantName(desc)
+    
+    // Strategy 1: Look for exact merchant name matches in history (highest priority)
+    // Sort by date descending to get the most recent categorization
+    const sortedTransactions = [...transactions].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    )
+    
+    for (const t of sortedTransactions) {
+      if (!t.description || t.subcategory === 'Untracked') continue
+      
+      const historicalMerchant = extractMerchantName(t.description.toLowerCase())
+      
+      // Check for exact merchant match
+      if (currentMerchant && historicalMerchant && currentMerchant === historicalMerchant) {
+        const subcategoryMatch = subcategories.find(sub => sub.name === t.subcategory)
+        return {
+          categoryId: subcategoryMatch?.id || null,
+          categoryName: t.category,
+          subcategoryName: t.subcategory
+        }
+      }
+    }
+    
+    // Strategy 2: Look for partial matches with significant word overlap
+    for (const t of sortedTransactions) {
+      if (!t.description || t.subcategory === 'Untracked') continue
+      
+      const cleanHistorical = t.description.toLowerCase()
+        .replace(/\\/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      
+      const cleanCurrent = desc.replace(/\\/g, ' ').replace(/\s+/g, ' ').trim()
+      
+      // Extract meaningful words (longer than 3 chars, not numbers)
+      const historicalWords = new Set(
+        cleanHistorical
+          .split(/\s+/)
+          .filter(w => w.length > 3 && !/^\d+$/.test(w))
+      )
+      
+      const currentWords = cleanCurrent
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !/^\d+$/.test(w))
+      
+      // Need at least 2 matching words or 1 very specific word (>6 chars)
+      const matchingWords = currentWords.filter(word => historicalWords.has(word))
+      const hasStrongMatch = matchingWords.some(w => w.length > 6) || matchingWords.length >= 2
+      
+      if (hasStrongMatch) {
+        const subcategoryMatch = subcategories.find(sub => sub.name === t.subcategory)
+        return {
+          categoryId: subcategoryMatch?.id || null,
+          categoryName: t.category,
+          subcategoryName: t.subcategory
+        }
+      }
+    }
+    
+    // Strategy 3: Common merchant patterns (fallback when no historical data)
+    const patterns = [
+      // Tech & Software
+      { keywords: ['github', 'google', 'apple.com/bill', 'microsoft', 'adobe', 'aws', 'digitalocean', 'heroku', 'netlify', 'vercel'], group: 'Technology', category: 'Software & Subscriptions' },
+      { keywords: ['youtube', 'netflix', 'spotify', 'disney', 'hulu', 'hbo', 'amazon prime'], group: 'Entertainment', category: 'Streaming Services' },
+      
+      // Shopping
+      { keywords: ['amazon', 'walmart', 'wal-mart', 'target', 'costco', 'best buy', 'home depot'], group: 'Shopping', category: 'General Shopping' },
+      { keywords: ['zara', 'h&m', 'gap', 'old navy', 'nike', 'adidas', 'boot barn'], group: 'Shopping', category: 'Clothing' },
+      
+      // Food & Dining
+      { keywords: ['restaurant', 'cafe', 'coffee', 'starbucks', 'mcdonalds', 'subway', 'pizza'], group: 'Food & Dining', category: 'Restaurants' },
+      { keywords: ['supermercado', 'supermarket', 'grocery', 'pali', 'fresh market', 'whole foods', 'trader joe'], group: 'Food & Dining', category: 'Groceries' },
+      { keywords: ['farmacia', 'pharmacy', 'cvs', 'walgreens', 'medismart'], group: 'Healthcare', category: 'Pharmacy' },
+      
+      // Transportation
+      { keywords: ['uber', 'lyft', 'taxi', 'parking', 'gas', 'shell', 'exxon', 'chevron'], group: 'Transportation', category: 'Transportation' },
+      
+      // Utilities & Services
+      { keywords: ['coopelesca', 'municipalidad', 'municipality', 'agua', 'water', 'electric', 'internet'], group: 'Fixed Costs', category: 'Utilities' },
+      
+      // Transfers & Banking
+      { keywords: ['sinpe', 'tef a :', 'tef de:', 'transfer'], group: 'Transfer', category: 'Transfer' },
+      { keywords: ['deposito', 'deposit', 'dep_atm', 'dep atm'], group: 'Income', category: 'Deposit' },
+      { keywords: ['comision', 'commission', 'intereses', 'interest'], group: 'Fixed Costs', category: 'Bank Fees' },
+    ]
+    
+    // Find matching pattern
+    for (const pattern of patterns) {
+      if (pattern.keywords.some(keyword => desc.includes(keyword))) {
+        // Try to find matching category in user's subcategories
+        const matchingSubcategory = subcategories.find(sub => 
+          sub.name.toLowerCase().includes(pattern.category.toLowerCase()) ||
+          pattern.category.toLowerCase().includes(sub.name.toLowerCase())
+        )
+        
+        if (matchingSubcategory) {
+          return {
+            categoryId: matchingSubcategory.id,
+            categoryName: pattern.group,
+            subcategoryName: matchingSubcategory.name
+          }
+        }
+        
+        // If no exact match, return pattern suggestion
+        return {
+          categoryId: null,
+          categoryName: pattern.group,
+          subcategoryName: pattern.category
+        }
+      }
+    }
+    
+    // Default to Misc/Untracked
+    return {
+      categoryId: null,
+      categoryName: 'Misc',
+      subcategoryName: 'Untracked'
+    }
+  }
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
@@ -610,16 +911,28 @@ export default function TransactionsPage() {
       const content = await file.text()
       setQifFileContent(content)
       
-      // Parse with current date format for preview
-      const parsedTransactions = parseQIFContent(content, dateFormat)
+      // Detect file type and parse accordingly
+      const fileName = file.name.toLowerCase()
+      let parsedTransactions: any[] = []
+      
+      if (fileName.endsWith('.ofx')) {
+        // Parse OFX file
+        parsedTransactions = parseOFXContent(content)
+      } else if (fileName.endsWith('.qif')) {
+        // Parse QIF file with current date format
+        parsedTransactions = parseQIFContent(content, dateFormat)
+      } else {
+        throw new Error('Unsupported file format. Please upload a .qif or .ofx file.')
+      }
       
       // Show preview dialog
       setPreviewTransactions(parsedTransactions)
       setIsPreviewDialogOpen(true)
 
     } catch (error) {
-      console.error('Error loading QIF file:', error)
-      alert('Error loading QIF file. Please make sure it is a valid QIF file.')
+      console.error('Error loading file:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Error loading file: ${errorMessage}`)
     } finally {
       setIsProcessingImport(false)
       // Reset file input
@@ -627,11 +940,41 @@ export default function TransactionsPage() {
     }
   }
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     try {
+      // Validation: Ensure an account is selected
+      if (!selectedAccount || selectedAccount === 'all') {
+        alert('Please select a specific account to import transactions into.')
+        return
+      }
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('You must be logged in to import transactions.')
+        return
+      }
+
+      // Find the account ID from the selected account name
+      const account = accounts.find(acc => acc.name === selectedAccount)
+      if (!account) {
+        alert('Selected account not found. Please refresh the page and try again.')
+        return
+      }
+
+      // Find or identify an "Untracked" category as fallback
+      const untrackedCategory = subcategories.find(sub => 
+        sub.name.toLowerCase() === 'untracked' || 
+        sub.name.toLowerCase() === 'uncategorized' ||
+        sub.name.toLowerCase() === 'misc' ||
+        sub.name.toLowerCase() === 'other'
+      )
+
       let importedCount = 0
       let duplicateCount = 0
-      const newTransactions: any[] = []
+      let skippedCount = 0
+      const newTransactionsForDb: any[] = []
+      const newTransactionsForSummary: any[] = []
 
       for (const trans of previewTransactions) {
         // Check if duplicate
@@ -640,43 +983,101 @@ export default function TransactionsPage() {
         if (isDupe) {
           duplicateCount++
         } else {
-          const newTrans = {
-            id: `imported-${Date.now()}-${importedCount}`,
+          // Auto-categorize based on description
+          const categorization = autoCategorizTransaction(trans.description)
+          
+          // If no category found, use the untracked category as fallback
+          let finalCategoryId = categorization.categoryId
+          if (!finalCategoryId) {
+            if (untrackedCategory) {
+              finalCategoryId = untrackedCategory.id
+            } else {
+              // Skip this transaction if no category available
+              console.warn(`Skipping transaction "${trans.description}" - no category available`)
+              skippedCount++
+              continue
+            }
+          }
+          
+          // Prepare transaction for database insert
+          const dbTransaction = {
+            user_id: user.id,
+            account_id: account.id, // Use the UUID, not the name
+            expense_category_id: finalCategoryId, // Always has a value now
+            amount: trans.amount,
+            description: trans.description,
+            transaction_date: trans.date,
+            is_pending: false,
+          }
+          newTransactionsForDb.push(dbTransaction)
+
+          // Prepare transaction for summary display
+          const summaryTransaction = {
             date: trans.date,
             description: trans.description,
             amount: trans.amount,
-            category: 'Misc',
-            subcategory: 'Untracked',
-            account: selectedAccount !== 'all' ? selectedAccount : 'Imported Account',
-            isPending: false,
+            category: categorization.categoryName,
+            subcategory: categorization.subcategoryName,
           }
-          newTransactions.push(newTrans)
+          newTransactionsForSummary.push(summaryTransaction)
+          
           importedCount++
         }
       }
 
-      // Add new transactions to state
-      setTransactions(prev => [...newTransactions, ...prev])
+      // Validate dates before saving
+      const invalidDates = newTransactionsForDb.filter(t => {
+        const date = new Date(t.transaction_date)
+        return isNaN(date.getTime())
+      })
+
+      if (invalidDates.length > 0) {
+        alert(`Found ${invalidDates.length} transaction(s) with invalid dates. For QIF files, check the date format setting in the preview. For OFX files, the file may be corrupted.`)
+        return
+      }
+
+      // Save to Supabase
+      if (newTransactionsForDb.length > 0) {
+        const { error } = await supabase
+          .from('transactions')
+          .insert(newTransactionsForDb)
+
+        if (error) {
+          console.error('Database error:', error)
+          if (error.message.includes('date/time field value out of range')) {
+            alert('Some dates are invalid. For QIF files, select the correct date format (MM/DD/YYYY or DD/MM/YYYY) in the preview screen. For OFX files, check if the file is valid.')
+          } else {
+            alert('Error saving transactions: ' + error.message)
+          }
+          throw error
+        }
+      }
 
       // Show summary
       setImportSummary({
         imported: importedCount,
         duplicates: duplicateCount,
+        skipped: skippedCount,
         total: previewTransactions.length,
-        transactions: newTransactions,
+        transactions: newTransactionsForSummary,
       })
 
-      // TODO: Save to Supabase
-      console.log('Imported transactions:', newTransactions)
+      // Show alert if some were skipped
+      if (skippedCount > 0) {
+        alert(`Import complete! ${importedCount} imported, ${duplicateCount} duplicates skipped, ${skippedCount} skipped (no matching category). To import skipped transactions, please create an "Untracked" or "Misc" category first.`)
+      }
 
       // Close preview dialog
       setIsPreviewDialogOpen(false)
       setPreviewTransactions([])
       setQifFileContent('')
 
+      // Reload transactions from database
+      await loadTransactions()
+
     } catch (error) {
       console.error('Error importing transactions:', error)
-      alert('Error importing transactions.')
+      alert('Error importing transactions. Please try again.')
     }
   }
 
@@ -707,7 +1108,21 @@ export default function TransactionsPage() {
               : 'View and manage all your transactions'}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={previousMonth}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-2 rounded-lg border px-3 py-2">
+              <Calendar className="h-4 w-4" />
+              <span className="text-sm font-medium whitespace-nowrap">
+                {getMonthName(currentMonth)} {currentYear}
+              </span>
+            </div>
+            <Button variant="outline" size="icon" onClick={nextMonth}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
           {selectedAccount !== 'all' && (
             <Button 
               variant="outline"
@@ -730,22 +1145,22 @@ export default function TransactionsPage() {
           </Button>
           <div>
             <Input
-              id="qif-upload"
+              id="file-upload"
               type="file"
-              accept=".qif"
+              accept=".qif,.ofx"
               className="hidden"
-              onChange={handleImportQIF}
+              onChange={handleImportFile}
               disabled={isProcessingImport}
             />
             <Button 
               variant="outline" 
               className="gap-2"
               size="sm"
-              onClick={() => document.getElementById('qif-upload')?.click()}
+              onClick={() => document.getElementById('file-upload')?.click()}
               disabled={isProcessingImport}
             >
               <Upload className="h-4 w-4" />
-              <span className="hidden sm:inline">{isProcessingImport ? 'Processing...' : 'Import QIF'}</span>
+              <span className="hidden sm:inline">{isProcessingImport ? 'Processing...' : 'Import QIF/OFX'}</span>
               <span className="sm:hidden">Import</span>
             </Button>
           </div>
@@ -825,11 +1240,28 @@ export default function TransactionsPage() {
                       disabled={!!newTransferToAccountId}
                     >
                       <option value="">None (for transfers)</option>
-                      {subcategories.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.name} {sub.group?.name && `(${sub.group.name})`}
-                        </option>
-                      ))}
+                      {expenseGroups
+                        .sort((a, b) => {
+                          // Sort income groups first, then expenses
+                          if (a.type === 'income' && b.type !== 'income') return -1
+                          if (a.type !== 'income' && b.type === 'income') return 1
+                          return a.sort_order - b.sort_order
+                        })
+                        .map((group) => {
+                          const groupCategories = subcategories.filter(
+                            cat => cat.group?.id === group.id
+                          )
+                          if (groupCategories.length === 0) return null
+                          return (
+                            <optgroup key={group.id} label={group.name}>
+                              {groupCategories.map((sub) => (
+                                <option key={sub.id} value={sub.id}>
+                                  {sub.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )
+                        })}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -999,11 +1431,28 @@ export default function TransactionsPage() {
                       disabled={!!newTransferToAccountId}
                     >
                       <option value="">None (for transfers)</option>
-                      {subcategories.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.name} {sub.group?.name && `(${sub.group.name})`}
-                        </option>
-                      ))}
+                      {expenseGroups
+                        .sort((a, b) => {
+                          // Sort income groups first, then expenses
+                          if (a.type === 'income' && b.type !== 'income') return -1
+                          if (a.type !== 'income' && b.type === 'income') return 1
+                          return a.sort_order - b.sort_order
+                        })
+                        .map((group) => {
+                          const groupCategories = subcategories.filter(
+                            cat => cat.group?.id === group.id
+                          )
+                          if (groupCategories.length === 0) return null
+                          return (
+                            <optgroup key={group.id} label={group.name}>
+                              {groupCategories.map((sub) => (
+                                <option key={sub.id} value={sub.id}>
+                                  {sub.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )
+                        })}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -1124,16 +1573,52 @@ export default function TransactionsPage() {
       {/* Transactions Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Transactions</CardTitle>
-          <CardDescription>
-            {filteredAndSortedTransactions.length} transactions found
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Recent Transactions</CardTitle>
+              <CardDescription>
+                {filteredAndSortedTransactions.length} transactions found
+                {selectedTransactions.size > 0 && isLargeScreen && (
+                  <span className="ml-2 text-primary font-medium">
+                    ({selectedTransactions.size} selected)
+                  </span>
+                )}
+              </CardDescription>
+            </div>
+            {selectedTransactions.size > 0 && isLargeScreen && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <MoreVertical className="h-4 w-4 mr-2" />
+                    Actions
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    onClick={handleBulkDelete}
+                    className="text-red-600 focus:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Selected ({selectedTransactions.size})
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
               <TableRow>
+                {isLargeScreen && (
+                  <TableHead className="w-[50px]">
+                    <Checkbox
+                      checked={selectedTransactions.size === filteredAndSortedTransactions.length && filteredAndSortedTransactions.length > 0}
+                      onCheckedChange={handleToggleAllTransactions}
+                    />
+                  </TableHead>
+                )}
                 <TableHead 
                   className="cursor-pointer select-none hover:bg-muted/50"
                   onClick={() => handleSort('date')}
@@ -1185,6 +1670,15 @@ export default function TransactionsPage() {
             <TableBody>
               {filteredAndSortedTransactions.map((transaction) => (
                 <TableRow key={transaction.id}>
+                  {isLargeScreen && (
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedTransactions.has(transaction.id)}
+                        onCheckedChange={() => handleToggleTransaction(transaction.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     {formatDate(transaction.date)}
                   </TableCell>
@@ -1304,11 +1798,28 @@ export default function TransactionsPage() {
                   onChange={(e) => setEditedExpenseCategoryId(e.target.value)}
                 >
                   <option value="">Select a category</option>
-                  {subcategories.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name} {sub.group?.name && `(${sub.group.name})`}
-                    </option>
-                  ))}
+                  {expenseGroups
+                    .sort((a, b) => {
+                      // Sort income groups first, then expenses
+                      if (a.type === 'income' && b.type !== 'income') return -1
+                      if (a.type !== 'income' && b.type === 'income') return 1
+                      return a.sort_order - b.sort_order
+                    })
+                    .map((group) => {
+                      const groupCategories = subcategories.filter(
+                        cat => cat.group?.id === group.id
+                      )
+                      if (groupCategories.length === 0) return null
+                      return (
+                        <optgroup key={group.id} label={group.name}>
+                          {groupCategories.map((sub) => (
+                            <option key={sub.id} value={sub.id}>
+                              {sub.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )
+                    })}
                 </select>
               </div>
               <div className="space-y-2">
@@ -1370,16 +1881,18 @@ export default function TransactionsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Import Preview Dialog */}
-      <Dialog open={isPreviewDialogOpen} onOpenChange={setIsPreviewDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Preview Import</DialogTitle>
-            <DialogDescription>
+      {/* Import Preview Drawer */}
+      <Drawer open={isPreviewDialogOpen} onOpenChange={setIsPreviewDialogOpen} direction="bottom">
+        <DrawerContent className="w-[90%] mx-auto max-h-[90vh]">
+          <DrawerHeader>
+            <DrawerTitle>Preview Import</DrawerTitle>
+            <DrawerDescription>
               Review transactions before importing. {previewTransactions.length} transactions found.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
+              Categories are auto-detected based on merchant names and your transaction history.
+              <strong className="block mt-2 text-foreground">⚠️ If dates look wrong (for QIF files), change the date format below.</strong>
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
             <div className="space-y-2">
               <Label htmlFor="date-format">Date Format</Label>
               <select
@@ -1393,7 +1906,7 @@ export default function TransactionsPage() {
                 <option value="YYYY-MM-DD">YYYY-MM-DD (ISO Format)</option>
               </select>
               <p className="text-xs text-muted-foreground">
-                Select the date format used in your QIF file. If dates look incorrect, try a different format.
+                <strong>Important:</strong> This setting is only for QIF files. OFX files contain date format information and are parsed automatically.
               </p>
             </div>
 
@@ -1406,26 +1919,36 @@ export default function TransactionsPage() {
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Description</TableHead>
+                        <TableHead>Category</TableHead>
                         <TableHead className="text-right">Amount</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {previewTransactions.slice(0, 100).map((trans, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{formatDate(trans.date)}</TableCell>
-                          <TableCell className="max-w-[400px] truncate">
-                            {trans.description}
-                          </TableCell>
-                          <TableCell
-                            className="text-right font-medium"
-                            style={{
-                              color: trans.amount > 0 ? '#22c55e' : '#ef4444',
-                            }}
-                          >
-                            {formatCurrency(Math.abs(trans.amount))}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {previewTransactions.slice(0, 100).map((trans, index) => {
+                        const categorization = autoCategorizTransaction(trans.description)
+                        return (
+                          <TableRow key={index}>
+                            <TableCell>{formatDate(trans.date)}</TableCell>
+                            <TableCell className="max-w-[300px] truncate">
+                              {trans.description}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-xs font-medium">{categorization.categoryName}</span>
+                                <span className="text-xs text-muted-foreground">{categorization.subcategoryName}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell
+                              className="text-right font-medium"
+                              style={{
+                                color: trans.amount > 0 ? '#22c55e' : '#ef4444',
+                              }}
+                            >
+                              {formatCurrency(Math.abs(trans.amount))}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -1446,21 +1969,21 @@ export default function TransactionsPage() {
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </DrawerContent>
+      </Drawer>
 
-      {/* Import Summary Dialog */}
-      <Dialog open={!!importSummary} onOpenChange={(open) => !open && setImportSummary(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Import Summary</DialogTitle>
-            <DialogDescription>
-              QIF file import completed
-            </DialogDescription>
-          </DialogHeader>
+      {/* Import Summary Drawer */}
+      <Drawer open={!!importSummary} onOpenChange={(open) => !open && setImportSummary(null)} direction="bottom">
+        <DrawerContent className="w-[90%] mx-auto max-h-[90vh]">
+          <DrawerHeader>
+            <DrawerTitle>Import Summary</DrawerTitle>
+            <DrawerDescription>
+              File import completed
+            </DrawerDescription>
+          </DrawerHeader>
           {importSummary && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+            <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -1501,29 +2024,70 @@ export default function TransactionsPage() {
                     </div>
                   </CardContent>
                 </Card>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <AlertCircle className="h-4 w-4 text-blue-600" />
+                        Skipped
+                      </div>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {importSummary.skipped}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
+
+              {importSummary.skipped > 0 && (
+                <Card className="border-blue-200 bg-blue-50">
+                  <CardContent className="pt-6">
+                    <div className="flex gap-3">
+                      <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-blue-900">
+                          {importSummary.skipped} transaction(s) were skipped
+                        </p>
+                        <p className="text-sm text-blue-800">
+                          These transactions couldn't be auto-categorized and you don't have an "Untracked", "Uncategorized", "Misc", or "Other" category. 
+                          To import these transactions, go to Categories and create one of these catch-all categories, then try importing again.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {importSummary.imported > 0 && (
                 <div className="space-y-2">
-                  <h4 className="text-sm font-semibold">Imported Transactions</h4>
-                  <div className="max-h-[300px] overflow-y-auto rounded-md border">
+                  <h4 className="text-sm font-semibold">Imported Transactions (with auto-detected categories)</h4>
+                  <div className="max-h-[400px] overflow-y-auto rounded-md border">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Description</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
+                          <TableHead className="w-[120px]">Date</TableHead>
+                          <TableHead className="min-w-[300px]">Description</TableHead>
+                          <TableHead className="w-[200px]">Category</TableHead>
+                          <TableHead className="text-right w-[120px]">Amount</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {importSummary.transactions.slice(0, 50).map((trans) => (
                           <TableRow key={trans.id}>
-                            <TableCell>{formatDate(trans.date)}</TableCell>
-                            <TableCell className="max-w-[300px] truncate">
-                              {trans.description}
+                            <TableCell className="whitespace-nowrap">{formatDate(trans.date)}</TableCell>
+                            <TableCell className="max-w-[400px]">
+                              <div className="truncate">{trans.description}</div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-xs font-medium">{trans.category}</span>
+                                <span className="text-xs text-muted-foreground">{trans.subcategory}</span>
+                              </div>
                             </TableCell>
                             <TableCell
-                              className="text-right font-medium"
+                              className="text-right font-medium whitespace-nowrap"
                               style={{
                                 color: trans.amount > 0 ? '#22c55e' : '#ef4444',
                               }}
@@ -1550,8 +2114,8 @@ export default function TransactionsPage() {
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </DrawerContent>
+      </Drawer>
     </div>
   )
 }
