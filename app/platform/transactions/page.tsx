@@ -818,16 +818,16 @@ export default function TransactionsPage() {
       const historicalWords = new Set(
         cleanHistorical
           .split(/\s+/)
-          .filter(w => w.length > 3 && !/^\d+$/.test(w))
+          .filter((w: string) => w.length > 3 && !/^\d+$/.test(w))
       )
       
       const currentWords = cleanCurrent
         .split(/\s+/)
-        .filter(w => w.length > 3 && !/^\d+$/.test(w))
+        .filter((w: string) => w.length > 3 && !/^\d+$/.test(w))
       
       // Need at least 2 matching words or 1 very specific word (>6 chars)
       const matchingWords = currentWords.filter(word => historicalWords.has(word))
-      const hasStrongMatch = matchingWords.some(w => w.length > 6) || matchingWords.length >= 2
+      const hasStrongMatch = matchingWords.some((w: string) => w.length > 6) || matchingWords.length >= 2
       
       if (hasStrongMatch) {
         const subcategoryMatch = subcategories.find(sub => sub.name === t.subcategory)
