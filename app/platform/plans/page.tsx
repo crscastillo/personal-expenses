@@ -103,6 +103,9 @@ export default function PlansPage() {
   const [viewMode, setViewMode] = useState<'list' | 'table'>(
     typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'table' : 'list'
   )
+  
+  // Copy from previous month state
+  const [isCopyingFromPreviousMonth, setIsCopyingFromPreviousMonth] = useState(false)
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -268,6 +271,98 @@ export default function PlansPage() {
       setCurrentYear(currentYear - 1)
     } else {
       setCurrentMonth(currentMonth - 1)
+    }
+  }
+
+  const copyFromPreviousMonth = async () => {
+    try {
+      setIsCopyingFromPreviousMonth(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      // Calculate previous month
+      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1
+      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear
+
+      // Get or create the previous month's plan
+      let { data: prevPlan, error: prevPlanError } = await supabase
+        .from('monthly_plans')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('month', prevMonth)
+        .eq('year', prevYear)
+        .maybeSingle()
+
+      if (prevPlanError) throw prevPlanError
+      
+      if (!prevPlan) {
+        alert(`No plan found for ${getMonthName(prevMonth)} ${prevYear}`)
+        return
+      }
+
+      // Get plan items from previous month
+      const { data: prevPlanItems, error: prevItemsError } = await supabase
+        .from('plan_items')
+        .select('*')
+        .eq('plan_id', prevPlan.id)
+
+      if (prevItemsError) throw prevItemsError
+
+      if (!prevPlanItems || prevPlanItems.length === 0) {
+        alert(`No plan items found in ${getMonthName(prevMonth)} ${prevYear}`)
+        return
+      }
+
+      // Ensure current month's plan exists
+      if (!currentPlanId) {
+        throw new Error('Current plan not found')
+      }
+
+      // Get existing plan items for current month
+      const { data: currentPlanItems, error: currentItemsError } = await supabase
+        .from('plan_items')
+        .select('expense_category_id')
+        .eq('plan_id', currentPlanId)
+
+      if (currentItemsError) throw currentItemsError
+
+      const existingCategoryIds = new Set(
+        currentPlanItems?.map((item: any) => item.expense_category_id) || []
+      )
+
+      // Copy plan items, skipping ones that already exist
+      const itemsToCopy = prevPlanItems
+        .filter(item => !existingCategoryIds.has(item.expense_category_id))
+        .map(item => ({
+          plan_id: currentPlanId,
+          expense_category_id: item.expense_category_id,
+          planned_amount: item.planned_amount,
+          due_date: item.due_date,
+          notes: item.notes,
+          is_completed: false, // Reset completion status
+        }))
+
+      if (itemsToCopy.length === 0) {
+        alert('All plan items from previous month already exist in current month')
+        return
+      }
+
+      // Insert the new plan items
+      const { error: insertError } = await supabase
+        .from('plan_items')
+        .insert(itemsToCopy)
+
+      if (insertError) throw insertError
+
+      alert(`Successfully copied ${itemsToCopy.length} plan items from ${getMonthName(prevMonth)} ${prevYear}`)
+      
+      // Reload the plan data
+      await loadPlanData()
+    } catch (error) {
+      console.error('Error copying from previous month:', error)
+      alert('Failed to copy plan items from previous month')
+    } finally {
+      setIsCopyingFromPreviousMonth(false)
     }
   }
 
@@ -761,6 +856,23 @@ export default function PlansPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+          
+          {/* Copy from Previous Month Button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={copyFromPreviousMonth}
+            disabled={isCopyingFromPreviousMonth}
+            className="gap-2"
+          >
+            <Copy className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {isCopyingFromPreviousMonth ? 'Copying...' : 'Copy from Previous'}
+            </span>
+            <span className="sm:hidden">
+              {isCopyingFromPreviousMonth ? '...' : 'Copy'}
+            </span>
+          </Button>
           
           {/* Large Screen: Dialog */}
           {isLargeScreen ? (
