@@ -813,14 +813,15 @@ export default function PlansPage() {
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Monthly Plan</h1>
-          <p className="text-sm text-muted-foreground md:text-base">
-            Track your budget for {getMonthName(currentMonth)} {currentYear}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      <div className="sticky top-0 z-10 bg-muted/5 backdrop-blur-sm border-b pb-4 -mx-4 md:-mx-6 px-4 md:px-6 pt-2">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Monthly Plan</h1>
+            <p className="text-sm text-muted-foreground md:text-base">
+              Track your budget for {getMonthName(currentMonth)} {currentYear}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
           {/* View mode toggle - hidden on small screens */}
           <div className="hidden lg:flex items-center gap-2 border rounded-lg p-1">
             <Button
@@ -1172,6 +1173,7 @@ export default function PlansPage() {
             </Drawer>
           )}
         </div>
+      </div>
       </div>
 
       {/* Charts */}
