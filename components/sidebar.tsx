@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Wallet, CreditCard, Settings, PiggyBank, FolderTree, X, Tags } from 'lucide-react'
+import { LayoutDashboard, Wallet, CreditCard, Settings, PiggyBank, FolderTree, X, Tags, TrendingDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -10,6 +10,7 @@ const navigation = [
   { name: 'Dashboard', href: '/platform', icon: LayoutDashboard },
   { name: 'Plans', href: '/platform/plans', icon: PiggyBank },
   { name: 'Accounts', href: '/platform/accounts', icon: Wallet },
+  { name: 'Credits & Loans', href: '/platform/credits', icon: TrendingDown },
   { name: 'Transactions', href: '/platform/transactions', icon: CreditCard },
   { name: 'Expense Groups', href: '/platform/expense-groups', icon: FolderTree },
   { name: 'Expense Categories', href: '/platform/expense-categories', icon: Tags },

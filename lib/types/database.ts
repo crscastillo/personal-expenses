@@ -83,6 +83,47 @@ export type Reminder = {
   created_at: string
 }
 
+export type Credit = {
+  id: string
+  user_id: string
+  name: string
+  type: 'mortgage' | 'personal_loan' | 'auto_loan' | 'student_loan' | 'credit_card' | 'line_of_credit' | 'other'
+  institution: string | null
+  account_number: string | null
+  original_amount: number
+  current_balance: number
+  interest_rate: number
+  currency: string
+  start_date: string | null
+  maturity_date: string | null
+  minimum_payment: number | null
+  payment_due_day: number | null
+  color: string
+  is_active: boolean
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CreditStatement = {
+  id: string
+  credit_id: string
+  user_id: string
+  statement_date: string
+  balance: number
+  interest_rate: number | null
+  minimum_payment: number | null
+  payment_due_date: string | null
+  interest_charged: number | null
+  principal_paid: number | null
+  fees_charged: number | null
+  new_charges: number | null
+  payments_made: number | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type PlanSummary = {
   plan_item_id: string
   plan_id: string
@@ -98,4 +139,15 @@ export type PlanSummary = {
   due_date: string | null
   actual_amount: number
   remaining_amount: number
+}
+
+export type ExchangeRate = {
+  id: string
+  from_currency: string
+  to_currency: string
+  rate: number
+  date: string
+  source: string | null
+  created_at: string
+  updated_at: string
 }

@@ -8,6 +8,15 @@ import { Plus, Search, Filter, Download, Pencil, ArrowUpDown, ArrowUp, ArrowDown
 import { Calculator } from '@/components/calculator'
 import { formatCurrency, formatDate, getMonthName, getCurrentMonth, getCurrentYear } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+
+// Helper function to get currency symbol
+const getCurrencySymbol = (currency: string): string => {
+  const symbols: Record<string, string> = {
+    'USD': '$',
+    'CRC': '₡',
+  }
+  return symbols[currency] || currency
+}
 import {
   Dialog,
   DialogContent,
@@ -77,6 +86,15 @@ export default function TransactionsPage() {
   const [newReference, setNewReference] = useState('')
   const [showOptionalFields, setShowOptionalFields] = useState(false)
   
+  // Currency conversion state for transfers
+  const [transferExchangeRate, setTransferExchangeRate] = useState('')
+  const [transferDestinationAmount, setTransferDestinationAmount] = useState('')
+  const [showCurrencyConversion, setShowCurrencyConversion] = useState(false)
+  const [isLoadingExchangeRate, setIsLoadingExchangeRate] = useState(false)
+  
+  // Exchange rates for USD conversion in transaction list
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({})
+  
   const [editingTransaction, setEditingTransaction] = useState<any>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editedDescription, setEditedDescription] = useState('')
@@ -118,6 +136,55 @@ export default function TransactionsPage() {
     loadAccountsAndSubcategories()
   }, [])
 
+  // Load exchange rates when transactions or accounts change
+  useEffect(() => {
+    loadExchangeRates()
+  }, [transactions, accounts])
+
+  const loadExchangeRates = async () => {
+    try {
+      // Get unique currencies from transactions via their accounts
+      const currencies = Array.from(new Set(
+        transactions
+          .map(t => t.currency)
+          .filter(c => c && c !== 'USD')
+      ))
+      
+      if (currencies.length === 0) {
+        setExchangeRates({ 'USD': 1 })
+        return
+      }
+
+      const rates: Record<string, number> = { 'USD': 1 }
+      
+      // Fetch exchange rate for each currency
+      for (const currency of currencies) {
+        try {
+          const response = await fetch(`/api/exchange-rates?from=${currency}&to=USD`)
+          if (response.ok) {
+            const data = await response.json()
+            rates[currency] = data.rate
+          } else {
+            rates[currency] = 1 // Fallback
+          }
+        } catch (error) {
+          console.error(`Error fetching rate for ${currency}:`, error)
+          rates[currency] = 1 // Fallback
+        }
+      }
+      
+      setExchangeRates(rates)
+    } catch (error) {
+      console.error('Error loading exchange rates:', error)
+    }
+  }
+
+  const convertToUSD = (amount: number, currency: string): number => {
+    if (currency === 'USD' || !currency) return amount
+    const rate = exchangeRates[currency] || 1
+    return amount * rate
+  }
+
   // Update selected account when URL changes
   useEffect(() => {
     if (accountFilter) {
@@ -152,7 +219,7 @@ export default function TransactionsPage() {
         .from('transactions')
         .select(`
           *,
-          account:accounts!transactions_account_id_fkey(name),
+          account:accounts!transactions_account_id_fkey(name, currency),
           expense_category:expense_categories(
             name,
             expense_group:expense_groups(name)
@@ -180,6 +247,7 @@ export default function TransactionsPage() {
         category: t.transfer_account ? 'Transfer' : (t.expense_category?.expense_group?.name || 'Misc'),
         subcategory: t.transfer_account ? t.transfer_account.name : (t.expense_category?.name || 'Untracked'),
         account: t.account?.name || 'Unknown',
+        currency: t.account?.currency || 'USD',
         isPending: t.is_pending || false,
         notes: t.notes,
         referenceNumber: t.reference_number,
@@ -233,6 +301,88 @@ export default function TransactionsPage() {
     }
   }
 
+  // Detect currency differences and fetch exchange rate for transfers
+  useEffect(() => {
+    const checkCurrencyConversion = async () => {
+      if (!newAccountId || !newTransferToAccountId || !accounts.length) {
+        setShowCurrencyConversion(false)
+        return
+      }
+
+      const sourceAccount = accounts.find(acc => acc.id === newAccountId)
+      const destAccount = accounts.find(acc => acc.id === newTransferToAccountId)
+
+      if (!sourceAccount || !destAccount) {
+        setShowCurrencyConversion(false)
+        return
+      }
+
+      const sourceCurrency = (sourceAccount as any).currency || 'USD'
+      const destCurrency = (destAccount as any).currency || 'USD'
+
+      if (sourceCurrency !== destCurrency) {
+        setShowCurrencyConversion(true)
+        
+        // Fetch exchange rate if not already set or if date changed
+        if (!transferExchangeRate || newDate) {
+          setIsLoadingExchangeRate(true)
+          try {
+            const response = await fetch(
+              `/api/exchange-rates?from=${sourceCurrency}&to=${destCurrency}&date=${newDate}`
+            )
+            if (response.ok) {
+              const data = await response.json()
+              setTransferExchangeRate(data.rate.toString())
+              
+              // Calculate destination amount if source amount is set
+              if (newAmount && !transferDestinationAmount) {
+                const destAmount = parseFloat(newAmount) * data.rate
+                setTransferDestinationAmount(destAmount.toFixed(2))
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching exchange rate:', error)
+          } finally {
+            setIsLoadingExchangeRate(false)
+          }
+        }
+      } else {
+        setShowCurrencyConversion(false)
+        setTransferExchangeRate('')
+        setTransferDestinationAmount('')
+      }
+    }
+
+    checkCurrencyConversion()
+  }, [newAccountId, newTransferToAccountId, accounts, newDate])
+
+  // Handle source amount change - calculate destination amount
+  const handleSourceAmountChange = (value: string) => {
+    setNewAmount(value)
+    if (showCurrencyConversion && transferExchangeRate && value) {
+      const destAmount = parseFloat(value) * parseFloat(transferExchangeRate)
+      setTransferDestinationAmount(destAmount.toFixed(2))
+    }
+  }
+
+  // Handle destination amount change - recalculate exchange rate
+  const handleDestinationAmountChange = (value: string) => {
+    setTransferDestinationAmount(value)
+    if (showCurrencyConversion && newAmount && value) {
+      const rate = parseFloat(value) / parseFloat(newAmount)
+      setTransferExchangeRate(rate.toFixed(6))
+    }
+  }
+
+  // Handle exchange rate change - recalculate destination amount
+  const handleExchangeRateChange = (value: string) => {
+    setTransferExchangeRate(value)
+    if (showCurrencyConversion && newAmount && value) {
+      const destAmount = parseFloat(newAmount) * parseFloat(value)
+      setTransferDestinationAmount(destAmount.toFixed(2))
+    }
+  }
+
   const handleAddTransaction = async () => {
     if (!newDescription || !newAmount || !newAccountId) {
       alert('Please fill in all required fields')
@@ -275,8 +425,13 @@ export default function TransactionsPage() {
 
       } else if (newTransferToAccountId) {
         // Transfer - create two transactions
-        const amount = parseFloat(newAmount)
-        const absAmount = Math.abs(amount)
+        const sourceAmount = parseFloat(newAmount)
+        const absSourceAmount = Math.abs(sourceAmount)
+        
+        // Use destination amount if currencies differ, otherwise same amount
+        const absDestAmount = showCurrencyConversion && transferDestinationAmount 
+          ? Math.abs(parseFloat(transferDestinationAmount))
+          : absSourceAmount
         
         const transactions = [
           // Transaction in source account (negative - money leaving)
@@ -284,7 +439,7 @@ export default function TransactionsPage() {
             user_id: user.id,
             account_id: newAccountId,
             transfer_to_account_id: newTransferToAccountId,
-            amount: -absAmount,
+            amount: -absSourceAmount,
             description: newDescription,
             transaction_date: newDate,
             notes: newNotes || null,
@@ -296,7 +451,7 @@ export default function TransactionsPage() {
             user_id: user.id,
             account_id: newTransferToAccountId,
             transfer_to_account_id: newAccountId,
-            amount: absAmount,
+            amount: absDestAmount,
             description: newDescription,
             transaction_date: newDate,
             notes: newNotes || null,
@@ -324,6 +479,9 @@ export default function TransactionsPage() {
       setNewReference('')
       setShowOptionalFields(false)
       setIsAddDialogOpen(false)
+      setTransferExchangeRate('')
+      setTransferDestinationAmount('')
+      setShowCurrencyConversion(false)
 
       // Reload transactions
       loadTransactions()
@@ -1169,7 +1327,15 @@ export default function TransactionsPage() {
           {isLargeScreen ? (
             <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
               setIsAddDialogOpen(open)
-              if (!open) setShowOptionalFields(false)
+              if (!open) {
+                setShowOptionalFields(false)
+              } else if (open && accountFilter && accounts.length > 0) {
+                // Pre-select account if coming from account filter
+                const matchingAccount = accounts.find(acc => acc.name === accountFilter)
+                if (matchingAccount) {
+                  setNewAccountId(matchingAccount.id)
+                }
+              }
             }}>
               <DialogTrigger asChild>
                 <Button className="gap-2">
@@ -1195,22 +1361,65 @@ export default function TransactionsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="new-amount">Amount *</Label>
+                    <Label htmlFor="new-amount">
+                      {showCurrencyConversion ? `Source Amount (${accounts.find(a => a.id === newAccountId)?.currency || 'USD'}) *` : 'Amount *'}
+                    </Label>
                     <Input
                       id="new-amount"
                       type="number"
                       step="0.01"
                       placeholder="0.00"
                       value={newAmount}
-                      onChange={(e) => setNewAmount(e.target.value)}
+                      onChange={(e) => showCurrencyConversion ? handleSourceAmountChange(e.target.value) : setNewAmount(e.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      {newTransferToAccountId 
-                        ? 'Enter transfer amount (will be deducted from source and added to destination)'
-                        : 'Use negative for expenses, positive for income'
-                      }
-                    </p>
+                    {!showCurrencyConversion && (
+                      <p className="text-xs text-muted-foreground">
+                        {newTransferToAccountId 
+                          ? 'Enter transfer amount (will be deducted from source and added to destination)'
+                          : 'Use negative for expenses, positive for income'
+                        }
+                      </p>
+                    )}
                   </div>
+                  
+                  {showCurrencyConversion && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="exchange-rate">
+                          Exchange Rate {isLoadingExchangeRate && '(Loading...)'}
+                        </Label>
+                        <Input
+                          id="exchange-rate"
+                          type="number"
+                          step="0.000001"
+                          placeholder="0.00"
+                          value={transferExchangeRate}
+                          onChange={(e) => handleExchangeRateChange(e.target.value)}
+                          disabled={isLoadingExchangeRate}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          1 {accounts.find(a => a.id === newAccountId)?.currency || 'USD'} = {transferExchangeRate || '?'} {accounts.find(a => a.id === newTransferToAccountId)?.currency || 'USD'}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="dest-amount">
+                          Destination Amount ({accounts.find(a => a.id === newTransferToAccountId)?.currency || 'USD'}) *
+                        </Label>
+                        <Input
+                          id="dest-amount"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={transferDestinationAmount}
+                          onChange={(e) => handleDestinationAmountChange(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Amount that will be added to destination account
+                        </p>
+                      </div>
+                    </>
+                  )}
+                  
                   <div className="space-y-2">
                     <Label htmlFor="new-account">Account *</Label>
                     <select
@@ -1360,7 +1569,15 @@ export default function TransactionsPage() {
             /* Small/Medium Screen: Drawer from bottom */
             <Drawer open={isAddDialogOpen} onOpenChange={(open) => {
               setIsAddDialogOpen(open)
-              if (!open) setShowOptionalFields(false)
+              if (!open) {
+                setShowOptionalFields(false)
+              } else if (open && accountFilter && accounts.length > 0) {
+                // Pre-select account if coming from account filter
+                const matchingAccount = accounts.find(acc => acc.name === accountFilter)
+                if (matchingAccount) {
+                  setNewAccountId(matchingAccount.id)
+                }
+              }
             }}>
               <DrawerTrigger asChild>
                 <Button className="gap-2">
@@ -1386,22 +1603,65 @@ export default function TransactionsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="new-amount-drawer">Amount *</Label>
+                    <Label htmlFor="new-amount-drawer">
+                      {showCurrencyConversion ? `Source Amount (${accounts.find(a => a.id === newAccountId)?.currency || 'USD'}) *` : 'Amount *'}
+                    </Label>
                     <Input
                       id="new-amount-drawer"
                       type="number"
                       step="0.01"
                       placeholder="0.00"
                       value={newAmount}
-                      onChange={(e) => setNewAmount(e.target.value)}
+                      onChange={(e) => showCurrencyConversion ? handleSourceAmountChange(e.target.value) : setNewAmount(e.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      {newTransferToAccountId 
-                        ? 'Enter transfer amount (will be deducted from source and added to destination)'
-                        : 'Use negative for expenses, positive for income'
-                      }
-                    </p>
+                    {!showCurrencyConversion && (
+                      <p className="text-xs text-muted-foreground">
+                        {newTransferToAccountId 
+                          ? 'Enter transfer amount (will be deducted from source and added to destination)'
+                          : 'Use negative for expenses, positive for income'
+                        }
+                      </p>
+                    )}
                   </div>
+                  
+                  {showCurrencyConversion && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="exchange-rate-drawer">
+                          Exchange Rate {isLoadingExchangeRate && '(Loading...)'}
+                        </Label>
+                        <Input
+                          id="exchange-rate-drawer"
+                          type="number"
+                          step="0.000001"
+                          placeholder="0.00"
+                          value={transferExchangeRate}
+                          onChange={(e) => handleExchangeRateChange(e.target.value)}
+                          disabled={isLoadingExchangeRate}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          1 {accounts.find(a => a.id === newAccountId)?.currency || 'USD'} = {transferExchangeRate || '?'} {accounts.find(a => a.id === newTransferToAccountId)?.currency || 'USD'}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="dest-amount-drawer">
+                          Destination Amount ({accounts.find(a => a.id === newTransferToAccountId)?.currency || 'USD'}) *
+                        </Label>
+                        <Input
+                          id="dest-amount-drawer"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={transferDestinationAmount}
+                          onChange={(e) => handleDestinationAmountChange(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Amount that will be added to destination account
+                        </p>
+                      </div>
+                    </>
+                  )}
+                  
                   <div className="space-y-2">
                     <Label htmlFor="new-account-drawer">Account *</Label>
                     <select
@@ -1717,7 +1977,16 @@ export default function TransactionsPage() {
                       color: transaction.amount > 0 ? '#22c55e' : '#ef4444',
                     }}
                   >
-                    {formatCurrency(Math.abs(transaction.amount))}
+                    <div className="flex flex-col items-end">
+                      {transaction.currency !== 'USD' && (
+                        <div className="text-xs text-muted-foreground">
+                          {getCurrencySymbol(transaction.currency)}{Math.abs(transaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      )}
+                      <div>
+                        ${convertToUSD(Math.abs(transaction.amount), transaction.currency).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Button

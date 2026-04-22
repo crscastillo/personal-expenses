@@ -12,9 +12,13 @@ interface StatCardProps {
     label: string
   }
   color?: string
+  originalValue?: number
+  originalCurrency?: string
 }
 
-export function StatCard({ title, value, currency = 'USD', icon: Icon, trend, color }: StatCardProps) {
+export function StatCard({ title, value, currency = 'USD', icon: Icon, trend, color, originalValue, originalCurrency }: StatCardProps) {
+  const showDualCurrency = originalValue !== undefined && originalCurrency && originalCurrency !== 'USD'
+  
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -22,6 +26,11 @@ export function StatCard({ title, value, currency = 'USD', icon: Icon, trend, co
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
+        {showDualCurrency && (
+          <div className="text-xs text-muted-foreground mb-1">
+            {formatCurrency(originalValue, originalCurrency)}
+          </div>
+        )}
         <div className="text-2xl font-bold" style={{ color }}>
           {formatCurrency(value, currency)}
         </div>
