@@ -1978,14 +1978,14 @@ export default function TransactionsPage() {
                     }}
                   >
                     <div className="flex flex-col items-end">
-                      {transaction.currency !== 'USD' && (
-                        <div className="text-xs text-muted-foreground">
-                          {getCurrencySymbol(transaction.currency)}{Math.abs(transaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                      )}
                       <div>
                         ${convertToUSD(Math.abs(transaction.amount), transaction.currency).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
+                      {transaction.currency !== 'USD' && (
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {getCurrencySymbol(transaction.currency)}{Math.abs(transaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>

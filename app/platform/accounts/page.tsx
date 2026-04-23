@@ -661,11 +661,6 @@ export default function AccountsPage() {
                   <div className="flex items-baseline justify-between">
                     <span className="text-sm text-muted-foreground">Current Balance</span>
                     <div className="text-right">
-                      {account.currency !== 'USD' && (
-                        <div className="text-xs text-muted-foreground mb-0.5">
-                          {formatCurrency(Math.abs(account.balance), account.currency)}
-                        </div>
-                      )}
                       <span
                         className="text-2xl font-bold"
                         style={{
@@ -678,6 +673,11 @@ export default function AccountsPage() {
                       >
                         {formatCurrency(convertToUSD(Math.abs(account.balance), account.currency), 'USD')}
                       </span>
+                      {account.currency !== 'USD' && (
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {formatCurrency(Math.abs(account.balance), account.currency)}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {isDebt && (

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, CreditCard, Home, Car, GraduationCap, TrendingDown, FileText, Upload, Pencil } from 'lucide-react'
+import { Plus, CreditCard, Home, Car, GraduationCap, TrendingDown, FileText, Upload, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import {
   Dialog,
@@ -101,12 +101,16 @@ export default function CreditsPage() {
   
   // Exchange rates for USD conversion
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({})
+  const [sortBy, setSortBy] = useState<'balance' | 'interestRate' | 'dueDate'>('balance')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isStatementsDialogOpen, setIsStatementsDialogOpen] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [isLargeScreen, setIsLargeScreen] = useState(false)
   const [editingCredit, setEditingCredit] = useState<Credit | null>(null)
+  const [editingStatementId, setEditingStatementId] = useState<string | null>(null)
+  const [activeStatementTab, setActiveStatementTab] = useState('statements')
   
   // Form state for adding credit
   const [newCreditName, setNewCreditName] = useState('')
@@ -120,6 +124,8 @@ export default function CreditsPage() {
   const [newMaturityDate, setNewMaturityDate] = useState('')
   const [newMinimumPayment, setNewMinimumPayment] = useState('')
   const [newPaymentDueDay, setNewPaymentDueDay] = useState('')
+  const [newDownPayment, setNewDownPayment] = useState('')
+  const [newNumberOfPayments, setNewNumberOfPayments] = useState('')
   const [newCurrency, setNewCurrency] = useState('USD')
   const [newColor, setNewColor] = useState('#ef4444')
   const [newNotes, setNewNotes] = useState('')
@@ -136,6 +142,8 @@ export default function CreditsPage() {
   const [editMaturityDate, setEditMaturityDate] = useState('')
   const [editMinimumPayment, setEditMinimumPayment] = useState('')
   const [editPaymentDueDay, setEditPaymentDueDay] = useState('')
+  const [editDownPayment, setEditDownPayment] = useState('')
+  const [editNumberOfPayments, setEditNumberOfPayments] = useState('')
   const [editCurrency, setEditCurrency] = useState('USD')
   const [editColor, setEditColor] = useState('#ef4444')
   const [editNotes, setEditNotes] = useState('')
@@ -211,6 +219,85 @@ export default function CreditsPage() {
     const rate = exchangeRates[currency] || 1
     return amount * rate
   }
+
+  // Calculate monthly payment using loan amortization formula
+  const calculateMonthlyPayment = (
+    loanAmount: number,
+    downPayment: number,
+    annualInterestRate: number,
+    numberOfPayments: number
+  ): number => {
+    const principal = loanAmount - downPayment
+    if (principal <= 0 || numberOfPayments <= 0) return 0
+    if (annualInterestRate === 0) return principal / numberOfPayments
+    
+    const monthlyRate = annualInterestRate / 100 / 12
+    const payment = principal * (monthlyRate * Math.pow(1 + monthlyRate, numberOfPayments)) / 
+                    (Math.pow(1 + monthlyRate, numberOfPayments) - 1)
+    
+    return payment
+  }
+
+  // Auto-calculate monthly payment for new credit
+  useEffect(() => {
+    if (newOriginalAmount && newInterestRate && newNumberOfPayments) {
+      const loanAmount = parseFloat(newOriginalAmount) || 0
+      const downPayment = parseFloat(newDownPayment) || 0
+      const rate = parseFloat(newInterestRate) || 0
+      const payments = parseInt(newNumberOfPayments) || 0
+      
+      if (loanAmount > 0 && payments > 0) {
+        const monthlyPayment = calculateMonthlyPayment(loanAmount, downPayment, rate, payments)
+        setNewMinimumPayment(monthlyPayment.toFixed(2))
+      }
+    }
+  }, [newOriginalAmount, newDownPayment, newInterestRate, newNumberOfPayments])
+
+  // Auto-calculate monthly payment for edit credit
+  useEffect(() => {
+    if (editOriginalAmount && editInterestRate && editNumberOfPayments) {
+      const loanAmount = parseFloat(editOriginalAmount) || 0
+      const downPayment = parseFloat(editDownPayment) || 0
+      const rate = parseFloat(editInterestRate) || 0
+      const payments = parseInt(editNumberOfPayments) || 0
+      
+      if (loanAmount > 0 && payments > 0) {
+        const monthlyPayment = calculateMonthlyPayment(loanAmount, downPayment, rate, payments)
+        setEditMinimumPayment(monthlyPayment.toFixed(2))
+      }
+    }
+  }, [editOriginalAmount, editDownPayment, editInterestRate, editNumberOfPayments])
+
+  // Auto-calculate statement interest charged based on previous balance and interest rate
+  useEffect(() => {
+    if (statementBalance && statementInterestRate) {
+      const balance = parseFloat(statementBalance) || 0
+      const rate = parseFloat(statementInterestRate) || 0
+      
+      if (balance > 0 && rate >= 0) {
+        // Monthly interest = (balance × annual rate) / 12
+        const monthlyInterest = (balance * rate) / 100 / 12
+        setStatementInterestCharged(monthlyInterest.toFixed(2))
+      } else if (balance <= 0) {
+        setStatementInterestCharged('0.00')
+      }
+    }
+  }, [statementBalance, statementInterestRate])
+
+  // Auto-calculate principal paid when payment is made
+  useEffect(() => {
+    const payment = parseFloat(statementPaymentsMade || '0')
+    const interest = parseFloat(statementInterestCharged || '0')
+    
+    // If payment is greater than 0, calculate principal
+    if (payment > 0) {
+      const principal = Math.max(0, payment - interest)
+      setStatementPrincipalPaid(principal.toFixed(2))
+    } else {
+      // Clear principal if no payment
+      setStatementPrincipalPaid('')
+    }
+  }, [statementPaymentsMade, statementInterestCharged])
 
   const loadCredits = async () => {
     try {
@@ -333,37 +420,58 @@ export default function CreditsPage() {
     }
 
     try {
-      const response = await fetch('/api/credits/statements', {
-        method: 'POST',
+      const isEditing = editingStatementId !== null
+      const url = '/api/credits/statements'
+      const method = isEditing ? 'PUT' : 'POST'
+      
+      const body = isEditing ? {
+        id: editingStatementId,
+        statement_date: statementDate,
+        balance: parseFloat(statementBalance),
+        interest_rate: statementInterestRate ? parseFloat(statementInterestRate) : null,
+        minimum_payment: statementMinPayment ? parseFloat(statementMinPayment) : null,
+        payment_due_date: statementDueDate || null,
+        interest_charged: statementInterestCharged ? parseFloat(statementInterestCharged) : null,
+        principal_paid: statementPrincipalPaid ? parseFloat(statementPrincipalPaid) : null,
+        fees_charged: statementFeesCharged ? parseFloat(statementFeesCharged) : null,
+        new_charges: statementNewCharges ? parseFloat(statementNewCharges) : null,
+        payments_made: statementPaymentsMade ? parseFloat(statementPaymentsMade) : null,
+        notes: statementNotes || null,
+      } : {
+        credit_id: selectedCredit.id,
+        statement_date: statementDate,
+        balance: parseFloat(statementBalance),
+        interest_rate: statementInterestRate ? parseFloat(statementInterestRate) : null,
+        minimum_payment: statementMinPayment ? parseFloat(statementMinPayment) : null,
+        payment_due_date: statementDueDate || null,
+        interest_charged: statementInterestCharged ? parseFloat(statementInterestCharged) : null,
+        principal_paid: statementPrincipalPaid ? parseFloat(statementPrincipalPaid) : null,
+        fees_charged: statementFeesCharged ? parseFloat(statementFeesCharged) : null,
+        new_charges: statementNewCharges ? parseFloat(statementNewCharges) : null,
+        payments_made: statementPaymentsMade ? parseFloat(statementPaymentsMade) : null,
+        notes: statementNotes || null,
+      }
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          credit_id: selectedCredit.id,
-          statement_date: statementDate,
-          balance: parseFloat(statementBalance),
-          interest_rate: statementInterestRate ? parseFloat(statementInterestRate) : null,
-          minimum_payment: statementMinPayment ? parseFloat(statementMinPayment) : null,
-          payment_due_date: statementDueDate || null,
-          interest_charged: statementInterestCharged ? parseFloat(statementInterestCharged) : null,
-          principal_paid: statementPrincipalPaid ? parseFloat(statementPrincipalPaid) : null,
-          fees_charged: statementFeesCharged ? parseFloat(statementFeesCharged) : null,
-          new_charges: statementNewCharges ? parseFloat(statementNewCharges) : null,
-          payments_made: statementPaymentsMade ? parseFloat(statementPaymentsMade) : null,
-          notes: statementNotes || null,
-        }),
+        body: JSON.stringify(body),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to add statement')
+        throw new Error(isEditing ? 'Failed to update statement' : 'Failed to add statement')
       }
 
       await loadStatements(selectedCredit.id)
       await loadCredits()
       resetStatementForm()
+      setEditingStatementId(null)
+      setActiveStatementTab('statements')
     } catch (error) {
-      console.error('Error adding statement:', error)
-      alert('Error adding statement. Please try again.')
+      console.error('Error saving statement:', error)
+      alert('Error saving statement. Please try again.')
     }
   }
 
@@ -375,6 +483,46 @@ export default function CreditsPage() {
     } catch (error) {
       console.error('Error importing CSV:', error)
       alert('Error importing statements. Please try again.')
+    }
+  }
+
+  const handleEditStatement = (statement: CreditStatement) => {
+    setEditingStatementId(statement.id)
+    setStatementDate(statement.statement_date)
+    setStatementBalance(statement.balance.toString())
+    setStatementInterestRate(statement.interest_rate?.toString() || '')
+    setStatementMinPayment(statement.minimum_payment?.toString() || '')
+    setStatementDueDate(statement.payment_due_date || '')
+    setStatementInterestCharged(statement.interest_charged?.toString() || '')
+    setStatementPrincipalPaid(statement.principal_paid?.toString() || '')
+    setStatementFeesCharged(statement.fees_charged?.toString() || '')
+    setStatementNewCharges(statement.new_charges?.toString() || '')
+    setStatementPaymentsMade(statement.payments_made?.toString() || '')
+    setStatementNotes(statement.notes || '')
+    setActiveStatementTab('add')
+  }
+
+  const handleDeleteStatement = async (statementId: string) => {
+    if (!selectedCredit) return
+
+    if (!confirm('Are you sure you want to delete this statement? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/credits/statements?id=${statementId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete statement')
+      }
+
+      await loadStatements(selectedCredit.id)
+      await loadCredits()
+    } catch (error) {
+      console.error('Error deleting statement:', error)
+      alert('Error deleting statement. Please try again.')
     }
   }
 
@@ -390,6 +538,8 @@ export default function CreditsPage() {
     setNewMaturityDate('')
     setNewMinimumPayment('')
     setNewPaymentDueDay('')
+    setNewDownPayment('')
+    setNewNumberOfPayments('')
     setNewCurrency('USD')
     setNewColor('#ef4444')
     setNewNotes('')
@@ -408,6 +558,8 @@ export default function CreditsPage() {
     setEditMaturityDate(credit.maturity_date || '')
     setEditMinimumPayment(credit.minimum_payment?.toString() || '')
     setEditPaymentDueDay(credit.payment_due_day?.toString() || '')
+    setEditDownPayment('')
+    setEditNumberOfPayments('')
     setEditCurrency(credit.currency || 'USD')
     setEditColor(credit.color)
     setEditNotes(credit.notes || '')
@@ -427,6 +579,8 @@ export default function CreditsPage() {
     setEditMaturityDate('')
     setEditMinimumPayment('')
     setEditPaymentDueDay('')
+    setEditDownPayment('')
+    setEditNumberOfPayments('')
     setEditCurrency('USD')
     setEditColor('#ef4444')
     setEditNotes('')
@@ -505,16 +659,75 @@ export default function CreditsPage() {
     setStatementNewCharges('')
     setStatementPaymentsMade('')
     setStatementNotes('')
+    setEditingStatementId(null)
   }
 
   const openStatementsDialog = async (credit: Credit) => {
     setSelectedCredit(credit)
-    await loadStatements(credit.id)
+    setEditingStatementId(null) // Reset editing state
+    setActiveStatementTab('statements') // Start on statements tab
+    
+    // Load statements to get the latest one
+    try {
+      const response = await fetch(`/api/credits/statements?creditId=${credit.id}`)
+      if (response.ok) {
+        const statementsData = await response.json()
+        setStatements(statementsData)
+        
+        // Pre-populate statement fields with loan defaults
+        setStatementInterestRate(credit.interest_rate.toString())
+        setStatementMinPayment(credit.minimum_payment?.toString() || '')
+        setStatementPaymentsMade(credit.minimum_payment?.toString() || '')
+        
+        // If there are existing statements, use the most recent one
+        if (statementsData.length > 0) {
+          const lastStatement = statementsData[0] // Most recent (sorted by date desc)
+          
+          // Calculate the after balance from the last statement
+          const afterBalance = lastStatement.balance 
+            + (lastStatement.interest_charged || 0)
+            + (lastStatement.new_charges || 0) 
+            + (lastStatement.fees_charged || 0)
+            - (lastStatement.payments_made || 0)
+          
+          // Pre-populate balance with the calculated after balance
+          setStatementBalance(afterBalance.toFixed(2))
+          
+          // Suggest next statement date (1 month after last statement)
+          const lastDate = new Date(lastStatement.statement_date)
+          lastDate.setMonth(lastDate.getMonth() + 1)
+          setStatementDate(lastDate.toISOString().split('T')[0])
+        } else {
+          // No statements yet, use credit's current balance and today's date
+          setStatementBalance(credit.current_balance.toString())
+          setStatementDate(new Date().toISOString().split('T')[0])
+        }
+      } else {
+        // Fallback to current credit balance
+        setStatementBalance(credit.current_balance.toString())
+        setStatementDate(new Date().toISOString().split('T')[0])
+      }
+    } catch (error) {
+      console.error('Error loading statements:', error)
+      // Fallback to current credit balance
+      setStatementBalance(credit.current_balance.toString())
+      setStatementDate(new Date().toISOString().split('T')[0])
+    }
+    
     setIsStatementsDialogOpen(true)
+  }
+
+  const handleStatementTabChange = (value: string) => {
+    // If switching away from add/edit tab back to statements, clear editing state
+    if (value === 'statements' && editingStatementId) {
+      setEditingStatementId(null)
+    }
+    setActiveStatementTab(value)
   }
 
   const addCreditFormContent = (
     <div className="space-y-4">
+      {/* Basic Information */}
       <div className="space-y-2">
         <Label>Credit Name *</Label>
         <Input 
@@ -523,22 +736,55 @@ export default function CreditsPage() {
           onChange={(e) => setNewCreditName(e.target.value)}
         />
       </div>
-      <div className="space-y-2">
-        <Label>Type *</Label>
-        <select
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-          value={newCreditType}
-          onChange={(e) => setNewCreditType(e.target.value as CreditType)}
-        >
-          <option value="credit_card">Credit Card</option>
-          <option value="mortgage">Mortgage</option>
-          <option value="personal_loan">Personal Loan</option>
-          <option value="auto_loan">Auto Loan</option>
-          <option value="student_loan">Student Loan</option>
-          <option value="line_of_credit">Line of Credit</option>
-          <option value="other">Other</option>
-        </select>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Type *</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+            value={newCreditType}
+            onChange={(e) => setNewCreditType(e.target.value as CreditType)}
+          >
+            <option value="credit_card">Credit Card</option>
+            <option value="mortgage">Mortgage</option>
+            <option value="personal_loan">Personal Loan</option>
+            <option value="auto_loan">Auto Loan</option>
+            <option value="student_loan">Student Loan</option>
+            <option value="line_of_credit">Line of Credit</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label>Currency *</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+            value={newCurrency}
+            onChange={(e) => setNewCurrency(e.target.value)}
+          >
+            <option value="USD">USD - US Dollar ($)</option>
+            <option value="CRC">CRC - Costa Rican Colón (₡)</option>
+          </select>
+        </div>
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Institution</Label>
+          <Input 
+            placeholder="e.g., Chase Bank" 
+            value={newInstitution}
+            onChange={(e) => setNewInstitution(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Account Number</Label>
+          <Input 
+            placeholder="e.g., ****1234" 
+            value={newAccountNumber}
+            onChange={(e) => setNewAccountNumber(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Loan Amount Details */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Original Amount *</Label>
@@ -551,41 +797,48 @@ export default function CreditsPage() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Current Balance *</Label>
+          <Label>Down Payment (Prima)</Label>
           <Input 
             type="number" 
             step="0.01" 
             placeholder="0.00" 
-            value={newCurrentBalance}
-            onChange={(e) => setNewCurrentBalance(e.target.value)}
+            value={newDownPayment}
+            onChange={(e) => setNewDownPayment(e.target.value)}
           />
         </div>
       </div>
       <div className="space-y-2">
-        <Label>Interest Rate (%) *</Label>
+        <Label>Current Balance *</Label>
         <Input 
           type="number" 
           step="0.01" 
-          placeholder="e.g., 4.5" 
-          value={newInterestRate}
-          onChange={(e) => setNewInterestRate(e.target.value)}
+          placeholder="0.00" 
+          value={newCurrentBalance}
+          onChange={(e) => setNewCurrentBalance(e.target.value)}
         />
       </div>
-      <div className="space-y-2">
-        <Label>Institution</Label>
-        <Input 
-          placeholder="e.g., Chase Bank" 
-          value={newInstitution}
-          onChange={(e) => setNewInstitution(e.target.value)}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>Account Number</Label>
-        <Input 
-          placeholder="e.g., ****1234" 
-          value={newAccountNumber}
-          onChange={(e) => setNewAccountNumber(e.target.value)}
-        />
+
+      {/* Loan Terms */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Interest Rate (%) *</Label>
+          <Input 
+            type="number" 
+            step="0.01" 
+            placeholder="e.g., 4.5" 
+            value={newInterestRate}
+            onChange={(e) => setNewInterestRate(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Number of Payments</Label>
+          <Input 
+            type="number" 
+            placeholder="e.g., 60" 
+            value={newNumberOfPayments}
+            onChange={(e) => setNewNumberOfPayments(e.target.value)}
+          />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -605,9 +858,11 @@ export default function CreditsPage() {
           />
         </div>
       </div>
+
+      {/* Payment Details */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Minimum Payment</Label>
+          <Label>Monthly Payment (Calculated)</Label>
           <Input 
             type="number" 
             step="0.01" 
@@ -628,6 +883,8 @@ export default function CreditsPage() {
           />
         </div>
       </div>
+
+      {/* Additional Info */}
       <div className="space-y-2">
         <Label>Color</Label>
         <Input 
@@ -635,17 +892,6 @@ export default function CreditsPage() {
           value={newColor}
           onChange={(e) => setNewColor(e.target.value)}
         />
-      </div>
-      <div className="space-y-2">
-        <Label>Currency</Label>
-        <select
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-          value={newCurrency}
-          onChange={(e) => setNewCurrency(e.target.value)}
-        >
-          <option value="USD">USD - US Dollar ($)</option>
-          <option value="CRC">CRC - Costa Rican Colón (₡)</option>
-        </select>
       </div>
       <div className="space-y-2">
         <Label>Notes</Label>
@@ -660,6 +906,7 @@ export default function CreditsPage() {
 
   const editCreditFormContent = (
     <div className="space-y-4">
+      {/* Basic Information */}
       <div className="space-y-2">
         <Label>Credit Name *</Label>
         <Input 
@@ -668,22 +915,55 @@ export default function CreditsPage() {
           onChange={(e) => setEditCreditName(e.target.value)}
         />
       </div>
-      <div className="space-y-2">
-        <Label>Type *</Label>
-        <select
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-          value={editCreditType}
-          onChange={(e) => setEditCreditType(e.target.value as CreditType)}
-        >
-          <option value="credit_card">Credit Card</option>
-          <option value="mortgage">Mortgage</option>
-          <option value="personal_loan">Personal Loan</option>
-          <option value="auto_loan">Auto Loan</option>
-          <option value="student_loan">Student Loan</option>
-          <option value="line_of_credit">Line of Credit</option>
-          <option value="other">Other</option>
-        </select>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Type *</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+            value={editCreditType}
+            onChange={(e) => setEditCreditType(e.target.value as CreditType)}
+          >
+            <option value="credit_card">Credit Card</option>
+            <option value="mortgage">Mortgage</option>
+            <option value="personal_loan">Personal Loan</option>
+            <option value="auto_loan">Auto Loan</option>
+            <option value="student_loan">Student Loan</option>
+            <option value="line_of_credit">Line of Credit</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label>Currency *</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
+            value={editCurrency}
+            onChange={(e) => setEditCurrency(e.target.value)}
+          >
+            <option value="USD">USD - US Dollar ($)</option>
+            <option value="CRC">CRC - Costa Rican Colón (₡)</option>
+          </select>
+        </div>
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Institution</Label>
+          <Input 
+            placeholder="e.g., Chase Bank" 
+            value={editInstitution}
+            onChange={(e) => setEditInstitution(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Account Number</Label>
+          <Input 
+            placeholder="e.g., ****1234" 
+            value={editAccountNumber}
+            onChange={(e) => setEditAccountNumber(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Loan Amount Details */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Original Amount *</Label>
@@ -696,41 +976,48 @@ export default function CreditsPage() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Current Balance *</Label>
+          <Label>Down Payment (Prima)</Label>
           <Input 
             type="number" 
             step="0.01" 
             placeholder="0.00" 
-            value={editCurrentBalance}
-            onChange={(e) => setEditCurrentBalance(e.target.value)}
+            value={editDownPayment}
+            onChange={(e) => setEditDownPayment(e.target.value)}
           />
         </div>
       </div>
       <div className="space-y-2">
-        <Label>Interest Rate (%) *</Label>
+        <Label>Current Balance *</Label>
         <Input 
           type="number" 
           step="0.01" 
-          placeholder="e.g., 4.5" 
-          value={editInterestRate}
-          onChange={(e) => setEditInterestRate(e.target.value)}
+          placeholder="0.00" 
+          value={editCurrentBalance}
+          onChange={(e) => setEditCurrentBalance(e.target.value)}
         />
       </div>
-      <div className="space-y-2">
-        <Label>Institution</Label>
-        <Input 
-          placeholder="e.g., Chase Bank" 
-          value={editInstitution}
-          onChange={(e) => setEditInstitution(e.target.value)}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>Account Number</Label>
-        <Input 
-          placeholder="e.g., ****1234" 
-          value={editAccountNumber}
-          onChange={(e) => setEditAccountNumber(e.target.value)}
-        />
+
+      {/* Loan Terms */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Interest Rate (%) *</Label>
+          <Input 
+            type="number" 
+            step="0.01" 
+            placeholder="e.g., 4.5" 
+            value={editInterestRate}
+            onChange={(e) => setEditInterestRate(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Number of Payments</Label>
+          <Input 
+            type="number" 
+            placeholder="e.g., 60" 
+            value={editNumberOfPayments}
+            onChange={(e) => setEditNumberOfPayments(e.target.value)}
+          />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -750,9 +1037,11 @@ export default function CreditsPage() {
           />
         </div>
       </div>
+
+      {/* Payment Details */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Minimum Payment</Label>
+          <Label>Monthly Payment (Calculated)</Label>
           <Input 
             type="number" 
             step="0.01" 
@@ -773,6 +1062,8 @@ export default function CreditsPage() {
           />
         </div>
       </div>
+
+      {/* Additional Info */}
       <div className="space-y-2">
         <Label>Color</Label>
         <Input 
@@ -780,17 +1071,6 @@ export default function CreditsPage() {
           value={editColor}
           onChange={(e) => setEditColor(e.target.value)}
         />
-      </div>
-      <div className="space-y-2">
-        <Label>Currency</Label>
-        <select
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2"
-          value={editCurrency}
-          onChange={(e) => setEditCurrency(e.target.value)}
-        >
-          <option value="USD">USD - US Dollar ($)</option>
-          <option value="CRC">CRC - Costa Rican Colón (₡)</option>
-        </select>
       </div>
       <div className="space-y-2">
         <Label>Notes</Label>
@@ -917,13 +1197,98 @@ export default function CreditsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {creditsList.map((credit) => {
+        <>
+          {/* Sorting Controls */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-sm text-muted-foreground">Sort by:</span>
+            <Button
+              variant={sortBy === 'balance' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                if (sortBy === 'balance') {
+                  setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                } else {
+                  setSortBy('balance')
+                  setSortDirection('desc')
+                }
+              }}
+              className="gap-1"
+            >
+              {sortBy === 'balance' ? (
+                sortDirection === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />
+              ) : (
+                <ArrowUpDown className="h-3 w-3" />
+              )}
+              Balance
+            </Button>
+            <Button
+              variant={sortBy === 'interestRate' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                if (sortBy === 'interestRate') {
+                  setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                } else {
+                  setSortBy('interestRate')
+                  setSortDirection('desc')
+                }
+              }}
+              className="gap-1"
+            >
+              {sortBy === 'interestRate' ? (
+                sortDirection === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />
+              ) : (
+                <ArrowUpDown className="h-3 w-3" />
+              )}
+              Interest Rate
+            </Button>
+            <Button
+              variant={sortBy === 'dueDate' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                if (sortBy === 'dueDate') {
+                  setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                } else {
+                  setSortBy('dueDate')
+                  setSortDirection('asc')
+                }
+              }}
+              className="gap-1"
+            >
+              {sortBy === 'dueDate' ? (
+                sortDirection === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />
+              ) : (
+                <ArrowUpDown className="h-3 w-3" />
+              )}
+              Due Date
+            </Button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...creditsList].sort((a, b) => {
+            let comparison = 0
+            if (sortBy === 'balance') {
+              comparison = convertToUSD(a.current_balance, a.currency) - convertToUSD(b.current_balance, b.currency)
+            } else if (sortBy === 'interestRate') {
+              comparison = a.interest_rate - b.interest_rate
+            } else if (sortBy === 'dueDate') {
+              // Handle null values - put them at the end for asc, beginning for desc
+              if (a.payment_due_day === null && b.payment_due_day === null) {
+                comparison = 0
+              } else if (a.payment_due_day === null) {
+                comparison = 1
+              } else if (b.payment_due_day === null) {
+                comparison = -1
+              } else {
+                comparison = a.payment_due_day - b.payment_due_day
+              }
+            }
+            return sortDirection === 'asc' ? comparison : -comparison
+          }).map((credit) => {
             const Icon = creditTypeIcons[credit.type]
             const percentPaid = ((credit.original_amount - credit.current_balance) / credit.original_amount) * 100
 
             return (
-              <Card key={credit.id} className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openStatementsDialog(credit)}>
+              <Card key={credit.id} className="hover:shadow-lg transition-shadow cursor-pointer flex flex-col" onClick={() => openStatementsDialog(credit)}>
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -953,52 +1318,54 @@ export default function CreditsPage() {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Current Balance</span>
-                    <div className="text-right">
-                      {credit.currency !== 'USD' && (
-                        <div className="text-xs text-muted-foreground mb-0.5">
-                          {getCurrencySymbol(credit.currency)}{credit.current_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                      )}
-                      <span className="font-semibold text-lg">
-                        {formatCurrency(convertToUSD(credit.current_balance, credit.currency), 'USD')}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Interest Rate</span>
-                    <Badge variant="secondary">{credit.interest_rate}% APR</Badge>
-                  </div>
-                  {credit.minimum_payment && (
+                <CardContent className="flex flex-col flex-1">
+                  <div className="space-y-2 flex-1">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Min Payment</span>
+                      <span className="text-sm text-muted-foreground">Current Balance</span>
                       <div className="text-right">
+                        <span className="font-semibold text-lg">
+                          {formatCurrency(convertToUSD(credit.current_balance, credit.currency), 'USD')}
+                        </span>
                         {credit.currency !== 'USD' && (
-                          <div className="text-xs text-muted-foreground">
-                            {getCurrencySymbol(credit.currency)}{credit.minimum_payment.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {getCurrencySymbol(credit.currency)}{credit.current_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {credit.currency}
                           </div>
                         )}
-                        <span className="font-medium">
-                          {formatCurrency(convertToUSD(credit.minimum_payment, credit.currency), 'USD')}
-                        </span>
                       </div>
                     </div>
-                  )}
-                  {credit.payment_due_day && (
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Due Day</span>
-                      <span className="font-medium">Day {credit.payment_due_day}</span>
+                      <span className="text-sm text-muted-foreground">Interest Rate</span>
+                      <Badge variant="secondary">{credit.interest_rate}% APR</Badge>
                     </div>
-                  )}
-                  {credit.institution && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Institution</span>
-                      <span className="text-sm">{credit.institution}</span>
-                    </div>
-                  )}
-                  <div className="pt-2">
+                    {credit.minimum_payment && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Min Payment</span>
+                        <div className="text-right">
+                          <span className="font-medium">
+                            {formatCurrency(convertToUSD(credit.minimum_payment, credit.currency), 'USD')}
+                          </span>
+                          {credit.currency !== 'USD' && (
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {getCurrencySymbol(credit.currency)}{credit.minimum_payment.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {credit.currency}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {credit.payment_due_day && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Due Day</span>
+                        <span className="font-medium">Day {credit.payment_due_day}</span>
+                      </div>
+                    )}
+                    {credit.institution && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Institution</span>
+                        <span className="text-sm">{credit.institution}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="pt-4 mt-auto">
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-muted-foreground">Paid off</span>
                       <span className="font-medium">{percentPaid.toFixed(1)}%</span>
@@ -1017,7 +1384,8 @@ export default function CreditsPage() {
               </Card>
             )
           })}
-        </div>
+          </div>
+        </>
       )}
 
       {/* Statements Dialog */}
@@ -1031,10 +1399,10 @@ export default function CreditsPage() {
               </DialogDescription>
             </DialogHeader>
             
-            <Tabs defaultValue="statements" className="flex-1 flex flex-col overflow-hidden">
+            <Tabs value={activeStatementTab} onValueChange={handleStatementTabChange} className="flex-1 flex flex-col overflow-hidden">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="statements">Statements</TabsTrigger>
-                <TabsTrigger value="add">Add Statement</TabsTrigger>
+                <TabsTrigger value="add">{editingStatementId ? 'Edit Statement' : 'Add Statement'}</TabsTrigger>
               </TabsList>
               
               <TabsContent value="statements" className="flex-1 overflow-y-auto">
@@ -1045,10 +1413,19 @@ export default function CreditsPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {statements.map((statement) => (
+                    {statements.map((statement) => {
+                      // Calculate after balance: previous balance + interest + new charges + fees - payments
+                      const previousBalance = statement.balance
+                      const afterBalance = previousBalance 
+                        + (statement.interest_charged || 0)
+                        + (statement.new_charges || 0) 
+                        + (statement.fees_charged || 0)
+                        - (statement.payments_made || 0)
+                      
+                      return (
                       <Card key={statement.id}>
                         <CardHeader>
-                          <div className="flex justify-between items-center">
+                          <div className="flex justify-between items-start">
                             <CardTitle className="text-base">
                               {new Date(statement.statement_date).toLocaleDateString('en-US', { 
                                 year: 'numeric', 
@@ -1056,7 +1433,38 @@ export default function CreditsPage() {
                                 day: 'numeric' 
                               })}
                             </CardTitle>
-                            <span className="text-lg font-bold">{getCurrencySymbol(selectedCredit.currency)}{statement.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <div className="flex items-start gap-3">
+                              <div className="text-right">
+                                <div className="text-sm text-muted-foreground">Previous Balance</div>
+                                <div className="text-lg font-bold">{getCurrencySymbol(selectedCredit.currency)}{previousBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                <div className="text-sm text-muted-foreground mt-1">After Balance</div>
+                                <div className="text-lg font-bold text-blue-600">{getCurrencySymbol(selectedCredit.currency)}{afterBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                              </div>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleEditStatement(statement)
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDeleteStatement(statement.id)
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         </CardHeader>
                         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
@@ -1104,24 +1512,42 @@ export default function CreditsPage() {
                           )}
                         </CardContent>
                       </Card>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </TabsContent>
               
               <TabsContent value="add" className="flex-1 overflow-y-auto">
                 <div className="space-y-4 px-1">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Statement Date *</Label>
-                      <Input 
-                        type="date" 
-                        value={statementDate}
-                        onChange={(e) => setStatementDate(e.target.value)}
-                      />
+                  {/* 1. Statement Information */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Statement Information</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Statement Date *</Label>
+                        <Input 
+                          type="date" 
+                          value={statementDate}
+                          onChange={(e) => setStatementDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Payment Due Date</Label>
+                        <Input 
+                          type="date" 
+                          value={statementDueDate}
+                          onChange={(e) => setStatementDueDate(e.target.value)}
+                        />
+                      </div>
                     </div>
+                  </div>
+
+                  {/* 2. Starting Balance */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Starting Balance</h3>
                     <div className="space-y-2">
-                      <Label>Balance *</Label>
+                      <Label>Previous Balance *</Label>
                       <Input 
                         type="number" 
                         step="0.01" 
@@ -1130,10 +1556,8 @@ export default function CreditsPage() {
                         onChange={(e) => setStatementBalance(e.target.value)}
                       />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Interest Rate (%)</Label>
+                      <Label>Interest Rate (%) *</Label>
                       <Input 
                         type="number" 
                         step="0.01" 
@@ -1142,8 +1566,51 @@ export default function CreditsPage() {
                         onChange={(e) => setStatementInterestRate(e.target.value)}
                       />
                     </div>
+                  </div>
+                  
+                  {/* 3. Charges This Period */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Charges This Period</h3>
                     <div className="space-y-2">
-                      <Label>Minimum Payment</Label>
+                      <Label>Interest Charged (Calculated)</Label>
+                      <Input 
+                        type="number" 
+                        step="0.01" 
+                        placeholder="0.00" 
+                        value={statementInterestCharged}
+                        onChange={(e) => setStatementInterestCharged(e.target.value)}
+                        className="bg-muted"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>New Charges</Label>
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          placeholder="0.00" 
+                          value={statementNewCharges}
+                          onChange={(e) => setStatementNewCharges(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fees Charged</Label>
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          placeholder="0.00" 
+                          value={statementFeesCharged}
+                          onChange={(e) => setStatementFeesCharged(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 4. Payments Made */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Payments Made</h3>
+                    <div className="space-y-2">
+                      <Label>Minimum Payment Required</Label>
                       <Input 
                         type="number" 
                         step="0.01" 
@@ -1152,78 +1619,43 @@ export default function CreditsPage() {
                         onChange={(e) => setStatementMinPayment(e.target.value)}
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Payment Due Date</Label>
-                    <Input 
-                      type="date" 
-                      value={statementDueDate}
-                      onChange={(e) => setStatementDueDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Interest Charged</Label>
+                      <Label>Payment Made</Label>
                       <Input 
                         type="number" 
                         step="0.01" 
                         placeholder="0.00" 
-                        value={statementInterestCharged}
-                        onChange={(e) => setStatementInterestCharged(e.target.value)}
+                        value={statementPaymentsMade}
+                        onChange={(e) => setStatementPaymentsMade(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Principal Paid</Label>
+                      <Label>Principal Paid (Calculated)</Label>
                       <Input 
                         type="number" 
                         step="0.01" 
                         placeholder="0.00" 
                         value={statementPrincipalPaid}
                         onChange={(e) => setStatementPrincipalPaid(e.target.value)}
+                        className="bg-muted"
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  
+                  {/* 5. Additional Information */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Additional Information</h3>
                     <div className="space-y-2">
-                      <Label>Fees Charged</Label>
+                      <Label>Notes</Label>
                       <Input 
-                        type="number" 
-                        step="0.01" 
-                        placeholder="0.00" 
-                        value={statementFeesCharged}
-                        onChange={(e) => setStatementFeesCharged(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>New Charges</Label>
-                      <Input 
-                        type="number" 
-                        step="0.01" 
-                        placeholder="0.00" 
-                        value={statementNewCharges}
-                        onChange={(e) => setStatementNewCharges(e.target.value)}
+                        placeholder="Additional notes" 
+                        value={statementNotes}
+                        onChange={(e) => setStatementNotes(e.target.value)}
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Payments Made</Label>
-                    <Input 
-                      type="number" 
-                      step="0.01" 
-                      placeholder="0.00" 
-                      value={statementPaymentsMade}
-                      onChange={(e) => setStatementPaymentsMade(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Notes</Label>
-                    <Input 
-                      placeholder="Additional notes" 
-                      value={statementNotes}
-                      onChange={(e) => setStatementNotes(e.target.value)}
-                    />
-                  </div>
-                  <Button className="w-full" onClick={handleAddStatement}>Add Statement</Button>
+
+                  <Button className="w-full" onClick={handleAddStatement}>{editingStatementId ? 'Update Statement' : 'Add Statement'}</Button>
                 </div>
               </TabsContent>
             </Tabs>
